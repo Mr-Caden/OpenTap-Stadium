@@ -6,7 +6,15 @@ export default class UIManager {
     constructor() {
         this.scoreboard = document.getElementById('ui-scoreboard');
         this.centerMessage = document.getElementById('ui-center-message');
+        this.topBar = document.getElementById('ui-top-bar');
         this.modalP5Instances = [];
+
+        this.isTutorialActive = false;
+        this.readyPlayers = new Set();
+        this.tutorialOnComplete = null;
+        this.tutorialOnCancel = null;
+        this.tutorialActivePlayers = [];
+        this.tutorialAvatarSketches = new Map();
 
         this._ensureElement('transition-curtain');
         this._ensureElement('tutorial-overlay');
@@ -58,6 +66,7 @@ export default class UIManager {
             });
             this.modalP5Instances = [];
         }
+        this.tutorialAvatarSketches.clear();
     }
 
     fireConfetti() {
@@ -111,63 +120,238 @@ export default class UIManager {
         this.transitionCurtain.classList.add('active');
         setTimeout(() => {
             if (callback) callback();
-        }, 500);
+        }, 400);
     }
 
     hideTransition() {
         this.transitionCurtain.classList.remove('active');
     }
 
-    showTutorial(gameConfig, duration = 4500, onComplete) {
-        let isDone = false;
-        let timerId = null;
+    showTutorial(gameConfig, playersList = [], onComplete = null, onCancel = null) {
+        this.isTutorialActive = true;
+        this.readyPlayers.clear();
+        this.tutorialOnComplete = onComplete;
+        this.tutorialOnCancel = onCancel;
+        this.tutorialActivePlayers = playersList;
+        this._cleanupModalP5();
 
-        const completeTutorial = () => {
-            if (isDone) return;
-            isDone = true;
-            if (timerId) clearTimeout(timerId);
-            window.removeEventListener('keydown', keySkipHandler);
-            this.tutorialOverlay.classList.remove('visible');
-            if (onComplete) onComplete();
-        };
+        if (this.topBar) {
+            this.topBar.style.display = 'none';
+        }
 
-        const keySkipHandler = (e) => {
-            if (['Space', 'Enter', 'Escape', ' '].includes(e.key)) {
-                completeTutorial();
-            }
-        };
+        const isTouchpad = gameConfig.controllerType === 'TOUCHPAD';
+        const isCompact = playersList.length > 4;
+
+        const rosterHTML = playersList.map(p => `
+            <div class="tutorial-player-chip" id="t-pchip-${p.id}">
+                <div class="t-pchip-avatar-box" id="t-pavatar-${p.id}"></div>
+                <div class="t-pchip-info">
+                    <span class="t-pchip-name">${p.name}</span>
+                    <span class="t-pchip-key">${p.type === 'mobile' ? 'Phone' : (p.label || 'Key')}</span>
+                </div>
+                <span class="t-pchip-status" id="t-pstatus-${p.id}">Waiting</span>
+            </div>
+        `).join('');
 
         this.tutorialOverlay.innerHTML = `
-            <div class="tutorial-badge">LIVE DEMO</div>
-            <div class="tutorial-title">${gameConfig.title}</div>
-            <div class="tutorial-text">${gameConfig.tutorial || "Good luck!"}</div>
-            <div class="tutorial-progress"><div class="tutorial-bar"></div></div>
-            <button id="tutorial-skip-btn" class="tutorial-skip-btn">Skip Tutorial</button>
+            <div class="tutorial-card">
+                <div class="tutorial-left-container">
+                    <div id="tutorial-canvas-target"></div>
+                    <div class="tutorial-inset-controller">
+                        <div class="tutorial-phone-mock">
+                            ${isTouchpad ? `
+                                <div class="tutorial-phone-touchpad">
+                                    <div class="tutorial-touch-dot"></div>
+                                    <div class="tutorial-touch-dot active">▲</div>
+                                    <div class="tutorial-touch-dot"></div>
+                                    <div class="tutorial-touch-dot active">◀</div>
+                                    <div class="tutorial-touch-dot"></div>
+                                    <div class="tutorial-touch-dot active">▶</div>
+                                    <div class="tutorial-touch-dot"></div>
+                                    <div class="tutorial-touch-dot active">▼</div>
+                                    <div class="tutorial-touch-dot"></div>
+                                </div>
+                            ` : `
+                                <div class="tutorial-phone-btn">
+                                    <span>TAP!</span>
+                                </div>
+                            `}
+                        </div>
+                        <div class="tutorial-inset-label">
+                            ${isTouchpad ? 'Touchpad Action' : 'One-Button Action'}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="tutorial-right-container">
+                    <div class="tutorial-content-top">
+                        <div class="tutorial-badge">LIVE DEMO</div>
+                        <div class="tutorial-title">${gameConfig.title}</div>
+                        <div class="tutorial-text">${gameConfig.tutorial || "Good luck!"}</div>
+                    </div>
+
+                    <div class="tutorial-ready-section">
+                        <div class="tutorial-ready-hint" id="t-ready-hint">Ready Up (0/${playersList.length} Players Ready)</div>
+                        <div class="tutorial-ready-roster ${isCompact ? 'roster-compact' : ''}">
+                            ${rosterHTML}
+                        </div>
+                    </div>
+
+                    <div class="tutorial-actions">
+                        <button id="tutorial-start-btn" class="primary-btn tutorial-start-btn" disabled>Waiting for Players...</button>
+                        <button id="tutorial-exit-btn" class="small-btn tutorial-exit-btn">Exit to Hub</button>
+                    </div>
+                </div>
+            </div>
         `;
         
         this.tutorialOverlay.classList.add('visible');
 
-        const skipBtn = document.getElementById('tutorial-skip-btn');
-        if (skipBtn) {
-            skipBtn.onclick = (e) => {
+        setTimeout(() => {
+            playersList.forEach(p => {
+                const targetId = `t-pavatar-${p.id}`;
+                const targetEl = document.getElementById(targetId);
+                if (!targetEl) return;
+
+                let currentExpression = 'idle';
+
+                const pSketch = (sketch) => {
+                    const avatars = new AvatarSystem(sketch);
+                    sketch.setup = () => {
+                        sketch.createCanvas(72, 72);
+                        sketch.noLoop();
+                    };
+                    sketch.draw = () => {
+                        sketch.clear();
+                        sketch.push();
+                        sketch.translate(36, 36);
+                        avatars.draw({
+                            x: 0,
+                            y: 0,
+                            size: 44,
+                            color: p.color,
+                            variant: p.variant,
+                            accessory: p.accessory,
+                            expression: currentExpression
+                        });
+                        sketch.pop();
+                    };
+                };
+
+                const p5Inst = new p5(pSketch, targetId);
+                this.modalP5Instances.push(p5Inst);
+                this.tutorialAvatarSketches.set(p.id, {
+                    inst: p5Inst,
+                    setHappy: () => {
+                        currentExpression = 'happy';
+                        p5Inst.redraw();
+                    }
+                });
+            });
+        }, 20);
+
+        const startBtn = document.getElementById('tutorial-start-btn');
+        if (startBtn) {
+            startBtn.onclick = (e) => {
                 e.stopPropagation();
-                completeTutorial();
+                if (this.readyPlayers.size >= this.tutorialActivePlayers.length) {
+                    this.completeTutorial();
+                }
             };
         }
 
-        window.addEventListener('keydown', keySkipHandler);
+        const exitBtn = document.getElementById('tutorial-exit-btn');
+        if (exitBtn) {
+            exitBtn.onclick = (e) => {
+                e.stopPropagation();
+                this.cancelTutorial();
+            };
+        }
 
-        setTimeout(() => {
-            const bar = this.tutorialOverlay.querySelector('.tutorial-bar');
-            if (bar) {
-                bar.style.transition = `width ${duration}ms linear`;
-                bar.style.width = '100%';
+        this._tutorialKeyHandler = (e) => {
+            if (e.key === 'Escape') {
+                this.cancelTutorial();
             }
-        }, 50);
+        };
+        window.addEventListener('keydown', this._tutorialKeyHandler);
+    }
 
-        timerId = setTimeout(() => {
-            completeTutorial();
-        }, duration);
+    playerReady(playerId) {
+        if (!this.isTutorialActive) return;
+
+        this.readyPlayers.add(playerId);
+
+        const chip = document.getElementById(`t-pchip-${playerId}`);
+        const status = document.getElementById(`t-pstatus-${playerId}`);
+        if (chip) chip.classList.add('ready');
+        if (status) status.innerText = 'Ready!';
+
+        if (this.tutorialAvatarSketches.has(playerId)) {
+            this.tutorialAvatarSketches.get(playerId).setHappy();
+        }
+
+        const totalRequired = this.tutorialActivePlayers.length;
+        const hintEl = document.getElementById('t-ready-hint');
+        if (hintEl) {
+            hintEl.innerText = `Ready Up (${this.readyPlayers.size}/${totalRequired} Players Ready)`;
+        }
+
+        const startBtn = document.getElementById('tutorial-start-btn');
+        if (totalRequired > 0 && this.readyPlayers.size >= totalRequired) {
+            if (startBtn) {
+                startBtn.disabled = false;
+                startBtn.innerText = 'Start Match';
+            }
+            setTimeout(() => {
+                this.completeTutorial();
+            }, 350);
+        }
+    }
+
+    completeTutorial() {
+        if (!this.isTutorialActive) return;
+        this.isTutorialActive = false;
+
+        if (this._tutorialKeyHandler) {
+            window.removeEventListener('keydown', this._tutorialKeyHandler);
+            this._tutorialKeyHandler = null;
+        }
+
+        if (this.topBar) {
+            this.topBar.style.display = 'flex';
+        }
+
+        this.tutorialOverlay.classList.remove('visible');
+
+        if (this.tutorialOnComplete) {
+            const cb = this.tutorialOnComplete;
+            this.tutorialOnComplete = null;
+            this.tutorialOnCancel = null;
+            cb();
+        }
+    }
+
+    cancelTutorial() {
+        if (!this.isTutorialActive) return;
+        this.isTutorialActive = false;
+
+        if (this._tutorialKeyHandler) {
+            window.removeEventListener('keydown', this._tutorialKeyHandler);
+            this._tutorialKeyHandler = null;
+        }
+
+        if (this.topBar) {
+            this.topBar.style.display = 'flex';
+        }
+
+        this.tutorialOverlay.classList.remove('visible');
+
+        if (this.tutorialOnCancel) {
+            const cancelCb = this.tutorialOnCancel;
+            this.tutorialOnComplete = null;
+            this.tutorialOnCancel = null;
+            cancelCb();
+        }
     }
 
     updateScoreboard(players) {
@@ -203,10 +387,12 @@ export default class UIManager {
         if (!this.centerMessage) return;
         this._cleanupModalP5();
 
+        // Valid DOM structure: uses div.message-content rather than invalid p-wrapped divs
         this.centerMessage.innerHTML = `
             <div class="message-card">
-                <h1>${title}</h1><p>${subtitle}</p>
-                ${buttonText ? `<button id="msg-btn" class="primary-btn">${buttonText}</button>` : ''}
+                <h1>${title}</h1>
+                <div class="message-content">${subtitle}</div>
+                ${buttonText ? `<button id="msg-btn" class="primary-btn" style="margin-top:16px;">${buttonText}</button>` : ''}
             </div>
         `;
         this.centerMessage.classList.add('visible');
@@ -249,7 +435,7 @@ export default class UIManager {
         this._bindButton('podium-btn', onButtonClick);
         
         const exitBtn = document.getElementById('podium-exit-btn');
-        if(exitBtn) {
+        if (exitBtn) {
             exitBtn.addEventListener('click', () => {
                 this.hideMessage();
                 window.dispatchEvent(new CustomEvent('game-exit'));
@@ -317,9 +503,9 @@ export default class UIManager {
         this.centerMessage.innerHTML = `
             <div class="message-card" style="min-width: 500px;">
                 <h1>${title}</h1>
-                <p>${subtitle}</p>
+                <div class="message-content">${subtitle}</div>
                 ${rowsHTML}
-                <button id="tourney-next-btn" class="primary-btn">Start Next Game</button>
+                <button id="tourney-next-btn" class="primary-btn" style="margin-top:16px;">Start Next Game</button>
             </div>
         `;
 
@@ -330,7 +516,7 @@ export default class UIManager {
             sortedStats.forEach((stat, idx) => {
                 const bar = document.getElementById(`bar-${idx}`);
                 const endPercent = (stat.newPoints / maxPoints) * 100;
-                if(bar) bar.style.width = `${endPercent}%`;
+                if (bar) bar.style.width = `${endPercent}%`;
 
                 const p = players.find(pl => pl.id === stat.id);
                 const canvasId = `stand-av-${idx}`;

@@ -73,24 +73,51 @@ export default class TournamentManager {
 
         window.dispatchEvent(new CustomEvent('game-selected', { detail: gameConfig }));
 
-        this.ui.showTransition(() => {
-            // Mount full-screen live AI demo during the tutorial display
-            this.runner.mount(gameConfig.class, 'game-canvas-container', 'demo');
-            this.ui.hideTransition();
+        const tutorialsEnabled = localStorage.getItem('opentap_tutorials') !== 'false';
 
-            this.ui.showTutorial(gameConfig, 4500, () => {
-                this.ui.showTransition(() => {
-                    // Mount tournament match with real players
-                    this.runner.mount(
-                        gameConfig.class,
-                        'game-canvas-container',
-                        'tournament',
-                        (results) => this.handleGameComplete(results),
-                        rules
-                    );
-                    this.ui.hideTransition();
-                });
-            });
+        this.ui.showTransition(() => {
+            // Direct launch if tutorials are toggled off
+            if (!tutorialsEnabled) {
+                this.runner.mount(
+                    gameConfig.class,
+                    'game-canvas-container',
+                    'tournament',
+                    (results) => this.handleGameComplete(results),
+                    rules
+                );
+                this.ui.hideTransition();
+                return;
+            }
+
+            const activePlayersList = this.players.getActivePlayers();
+
+            // Show interactive ready-up tutorial
+            this.ui.showTutorial(
+                gameConfig,
+                activePlayersList,
+                () => {
+                    // All players ready: launch match
+                    this.ui.showTransition(() => {
+                        this.runner.unmount('tutorial-canvas-target');
+                        this.runner.mount(
+                            gameConfig.class,
+                            'game-canvas-container',
+                            'tournament',
+                            (results) => this.handleGameComplete(results),
+                            rules
+                        );
+                        this.ui.hideTransition();
+                    });
+                },
+                () => {
+                    // Early exit from tutorial: return to hub
+                    window.dispatchEvent(new CustomEvent('game-exit'));
+                }
+            );
+
+            // Mount the live AI simulation directly inside the tutorial preview container
+            this.runner.mount(gameConfig.class, 'tutorial-canvas-target', 'demo');
+            this.ui.hideTransition();
         });
     }
 

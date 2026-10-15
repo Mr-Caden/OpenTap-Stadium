@@ -1,19 +1,28 @@
 /* src/core/PlayerManager.js */
 
+import AvatarSystem from './AvatarSystem.js';
+
 export default class PlayerManager {
     constructor() {
+        const accs = AvatarSystem.ACCESSORIES;
+        const getRandomAcc = () => accs[Math.floor(Math.random() * accs.length)];
+
         this.players = [
-            { id: 0, type: 'local', uuid: 'local-1', name: 'Red', color: '#E24A4A', key: 'Shift', label: 'L-Shift', variant: 'default', accessory: 'Cat Ears' },
-            { id: 1, type: 'local', uuid: 'local-2', name: 'Yellow', color: '#F4B84D', key: ' ', label: 'Space', variant: 'feminine', accessory: 'Bow' }
+            { id: 0, type: 'local', uuid: 'local-1', name: 'Red', color: '#E24A4A', key: 'Shift', label: 'L-Shift', variant: 'default', accessory: getRandomAcc() },
+            { id: 1, type: 'local', uuid: 'local-2', name: 'Yellow', color: '#F4B84D', key: ' ', label: 'Space', variant: 'feminine', accessory: getRandomAcc() }
         ];
 
-        this.colors = ['#2ecc71', '#e67e22', '#1abc9c', '#e84393', '#9b59b6', '#3498db'];
+        // Extended palette supporting 2 to 10+ players with high contrast
+        this.colors = [
+            '#2ECC71', '#3498DB', '#9B59B6', '#E67E22', 
+            '#1ABC9C', '#E84393', '#34495E', '#D35400', 
+            '#00CEC9', '#6C5CE7', '#0984E3', '#FDCB6E'
+        ];
         
         const saved = localStorage.getItem('arcade_players');
         if (saved) {
             try { 
                 const parsed = JSON.parse(saved);
-                // Ensure local players have UUIDs (legacy fix)
                 this.players = parsed.filter(p => p.type === 'local').map((p, i) => ({
                     ...p,
                     uuid: p.uuid || `local-${i+1}`
@@ -25,8 +34,6 @@ export default class PlayerManager {
     getActivePlayers() { return this.players; }
     getPlayer(index) { return this.players[index]; }
     getPlayerById(id) { return this.players.find(p => p.id === id); }
-    
-    // --- KEY FOR RECONNECTION ---
     getPlayerByUUID(uuid) { return this.players.find(p => p.uuid === uuid); }
 
     savePlayers() {
@@ -36,13 +43,21 @@ export default class PlayerManager {
 
     addPlayer(type = 'local', uuid = null) {
         const nextId = this.players.length > 0 ? Math.max(...this.players.map(p => p.id)) + 1 : 0;
-        const usedColors = this.players.map(p => p.color);
-        const color = this.colors.find(c => !usedColors.includes(c)) || '#333';
+        const usedColors = this.players.map(p => p.color.toUpperCase());
+        const color = this.colors.find(c => !usedColors.includes(c.toUpperCase())) || '#7A6F68';
 
+        // Keyboard bindings supporting up to 10 local players
         const inputPool = [
-            { key: 'Shift', label: 'L-Shift' }, { key: ' ', label: 'Space' },
-            { key: '+', label: '+' }, { key: 'Enter', label: 'Enter' },
-            { key: 'z', label: 'Z' }, { key: 'm', label: 'M' }
+            { key: 'Shift', label: 'L-Shift' }, 
+            { key: ' ', label: 'Space' },
+            { key: 'Enter', label: 'Enter' },
+            { key: '+', label: '+' },
+            { key: 'z', label: 'Z' }, 
+            { key: 'm', label: 'M' },
+            { key: 'q', label: 'Q' },
+            { key: 'p', label: 'P' },
+            { key: 'c', label: 'C' },
+            { key: 'b', label: 'B' }
         ];
 
         let keyConfig = { key: null, label: 'Mobile' };
@@ -54,6 +69,10 @@ export default class PlayerManager {
             else return null; 
         }
 
+        // Random accessory selection upon join
+        const accs = AvatarSystem.ACCESSORIES;
+        const randomAccessory = accs[Math.floor(Math.random() * accs.length)];
+
         const newPlayer = {
             id: nextId,
             uuid: uuid || `temp-${Date.now()}`,
@@ -63,7 +82,7 @@ export default class PlayerManager {
             key: keyConfig.key,
             label: keyConfig.label,
             variant: 'default',
-            accessory: 'Bear Ears'
+            accessory: randomAccessory
         };
 
         this.players.push(newPlayer);

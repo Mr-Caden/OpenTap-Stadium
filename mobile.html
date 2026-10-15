@@ -7,14 +7,23 @@
             content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
         />
         <title>OpenTap Controller</title>
+        <!-- Core External Libraries including Matter.js for physics minigames -->
         <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
         <script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/p5.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
         <style>
             :root {
                 --bg-base: #211b18;
                 --accent-coral: #ff5a36;
+                --accent-hover: #e84520;
+                --accent-amber: #f59e0b;
+                --accent-cream: #f3ece1;
                 --card-surface: #ffffff;
+                --border-color: #e8e1d5;
                 --text-main: #2d2522;
+                --text-muted: #7a6f68;
+                --radius: 16px;
+                --radius-btn: 30px;
             }
 
             body {
@@ -32,7 +41,6 @@
             }
 
             .screen {
-                display: none;
                 position: absolute;
                 top: 0;
                 left: 0;
@@ -45,6 +53,11 @@
                 z-index: 10;
             }
 
+            .screen:not(.active) {
+                display: none !important;
+            }
+
+            .screen.active,
             .active {
                 display: flex !important;
             }
@@ -105,26 +118,43 @@
                 transform: scale(0.97);
             }
 
+            /* Vertically centered player customization screen for all mobile display sizes */
             #screen-lobby {
                 background: var(--bg-base);
+                overflow-y: auto;
+                -webkit-overflow-scrolling: touch;
+                min-height: 100%;
+                padding: 24px 16px;
+                box-sizing: border-box;
+            }
+
+            .lobby-content-wrapper {
+                width: 100%;
+                max-width: 360px;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                gap: 14px;
+                margin: auto 0;
             }
 
             .player-card {
                 background: white;
                 border-radius: 18px;
-                padding: 22px;
-                width: 90%;
-                max-width: 350px;
+                padding: 20px;
+                width: 100%;
                 display: flex;
                 flex-direction: column;
-                gap: 15px;
+                gap: 12px;
                 color: var(--text-main);
                 box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+                box-sizing: border-box;
             }
 
             .setup-preview {
                 width: 100%;
-                height: 200px;
+                height: 180px;
+                max-height: 25vh;
                 background: #f3ece1;
                 border-radius: 12px;
                 display: flex;
@@ -187,9 +217,98 @@
                 border-radius: 8px;
                 font-weight: bold;
                 color: #2d2522;
-                font-size: 0.9rem;
+                font-size: 0.95rem;
+                text-align: center;
             }
 
+            .lobby-select-game-btn {
+                background: var(--accent-amber);
+                color: white;
+                border: none;
+                padding: 14px 24px;
+                border-radius: var(--radius-btn);
+                font-weight: 900;
+                font-size: 1rem;
+                cursor: pointer;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+                width: 100%;
+                transition: transform 0.1s;
+                box-sizing: border-box;
+            }
+
+            .lobby-select-game-btn:active {
+                transform: scale(0.98);
+            }
+
+            /* DEDICATED PHONE READY-UP SCREEN */
+            #screen-ready {
+                background: var(--bg-base);
+                padding: 24px;
+                box-sizing: border-box;
+                text-align: center;
+            }
+
+            .ready-badge-header {
+                font-size: 0.85rem;
+                font-weight: 900;
+                letter-spacing: 1px;
+                text-transform: uppercase;
+                color: var(--accent-amber);
+                margin-bottom: 24px;
+            }
+
+            #ready-avatar-target {
+                width: 140px;
+                height: 140px;
+                margin-bottom: 24px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+
+            #btn-ready-toggle {
+                width: 85vw;
+                height: 45vh;
+                max-width: 380px;
+                max-height: 380px;
+                background: var(--accent-coral);
+                border-radius: 36px;
+                border: 8px solid rgba(0, 0, 0, 0.15);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                flex-direction: column;
+                transition: transform 0.05s, background-color 0.2s ease,
+                    box-shadow 0.2s ease;
+                box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+                cursor: pointer;
+            }
+
+            #btn-ready-toggle:active {
+                transform: scale(0.96);
+            }
+
+            #btn-ready-toggle.is-ready {
+                background: #2ecc71 !important;
+                box-shadow: 0 0 30px rgba(46, 204, 113, 0.4);
+            }
+
+            .ready-btn-text {
+                color: white;
+                font-size: 2rem;
+                font-weight: 900;
+                letter-spacing: 1px;
+            }
+
+            .ready-sub-prompt {
+                margin-top: 24px;
+                font-size: 0.95rem;
+                color: #fdfcf7;
+                opacity: 0.75;
+                font-weight: 600;
+            }
+
+            /* CONTROLLER SCREENS */
             #screen-controller {
                 background: var(--bg-base);
             }
@@ -197,6 +316,8 @@
             #btn-big {
                 width: 85vw;
                 height: 60vh;
+                max-width: 420px;
+                max-height: 520px;
                 background: var(--accent-coral);
                 border-radius: 36px;
                 border: 8px solid rgba(0, 0, 0, 0.15);
@@ -280,13 +401,154 @@
                 text-align: center;
             }
 
+            /* RESPONSIVE FULL-SCREEN MOBILE GALLERY */
+            #mobile-gallery-screen {
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100vw;
+                height: 100vh;
+                background: #faf6f0;
+                z-index: 2500;
+                display: flex;
+                flex-direction: column;
+                overflow: hidden;
+            }
+
+            .gallery-top-bar {
+                background: #211b18;
+                color: #fdfcf7;
+                padding: 16px 20px;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                flex-shrink: 0;
+            }
+
+            .gallery-top-title {
+                font-size: 1.15rem;
+                font-weight: 900;
+                letter-spacing: 0.5px;
+                text-transform: uppercase;
+            }
+
+            .close-gallery-btn {
+                background: none;
+                border: none;
+                color: white;
+                font-size: 32px;
+                cursor: pointer;
+                line-height: 1;
+                padding: 0 6px;
+            }
+
+            #mobile-gallery-scroll {
+                flex: 1 1 auto;
+                width: 100%;
+                overflow-y: scroll;
+                -webkit-overflow-scrolling: touch;
+                padding: 16px;
+                display: flex;
+                flex-direction: column;
+                gap: 18px;
+                box-sizing: border-box;
+                min-height: 0;
+            }
+
+            .mobile-card-item {
+                flex-shrink: 0;
+                width: 100%;
+                background: #ffffff;
+                border: 1px solid var(--border-color);
+                border-radius: var(--radius);
+                box-shadow: 0 4px 14px rgba(45, 37, 34, 0.06);
+                overflow: hidden;
+                display: flex;
+                flex-direction: column;
+                margin-bottom: 4px;
+            }
+
+            .mobile-card-canvas-box {
+                width: 100%;
+                height: 180px;
+                min-height: 180px;
+                background: var(--accent-cream);
+                border-bottom: 1px solid var(--border-color);
+                position: relative;
+                overflow: hidden;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+            }
+
+            .mobile-card-canvas-box canvas {
+                width: 100% !important;
+                height: 100% !important;
+                display: block;
+            }
+
+            .mobile-card-info {
+                padding: 16px;
+                display: flex;
+                flex-direction: column;
+                gap: 6px;
+            }
+
+            .mobile-card-title-row {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+            }
+
+            .mobile-card-title {
+                font-size: 1.25rem;
+                font-weight: 900;
+                color: var(--text-main);
+                margin: 0;
+            }
+
+            .mobile-card-badge {
+                background: rgba(33, 27, 24, 0.08);
+                color: var(--text-main);
+                font-size: 0.72rem;
+                font-weight: 800;
+                letter-spacing: 0.5px;
+                text-transform: uppercase;
+                padding: 4px 8px;
+                border-radius: 12px;
+            }
+
+            .mobile-card-desc {
+                font-size: 0.9rem;
+                color: var(--text-muted);
+                margin: 0 0 10px 0;
+                line-height: 1.4;
+            }
+
+            .mobile-launch-btn {
+                background: var(--accent-coral);
+                color: white;
+                border: none;
+                padding: 12px 18px;
+                border-radius: var(--radius-btn);
+                font-weight: 900;
+                font-size: 0.95rem;
+                cursor: pointer;
+                transition: background 0.15s;
+            }
+
+            .mobile-launch-btn:active {
+                background: var(--accent-hover);
+            }
+
+            /* MENU OVERLAY */
             #overlay-menu {
                 position: fixed;
                 top: 0;
                 left: 0;
                 width: 100%;
                 height: 100%;
-                background: rgba(33, 27, 24, 0.95);
+                background: rgba(33, 27, 24, 0.96);
                 z-index: 2000;
                 display: flex;
                 flex-direction: column;
@@ -323,16 +585,6 @@
             .menu-option.primary {
                 background: var(--accent-coral);
                 color: white;
-            }
-
-            select.game-select {
-                width: 80%;
-                padding: 15px;
-                font-size: 1.1rem;
-                border-radius: 12px;
-                margin-bottom: 15px;
-                border: none;
-                font-weight: bold;
             }
 
             .close-menu-btn {
@@ -453,45 +705,68 @@
             </div>
         </div>
 
-        <!-- LOBBY -->
+        <!-- LOBBY (Vertically Centered) -->
         <div id="screen-lobby" class="screen">
-            <div class="player-card">
-                <div id="lobby-avatar" class="setup-preview"></div>
-                <input
-                    type="text"
-                    id="p-name"
-                    class="name-input"
-                    placeholder="Name"
-                    maxlength="12"
-                    oninput="sendUpdate()"
-                />
-                <input
-                    type="range"
-                    id="p-hue"
-                    class="hue-slider"
-                    min="0"
-                    max="360"
-                    oninput="updateColor(this.value)"
-                />
-                <div class="opts-row">
-                    <button
-                        id="btn-style"
-                        class="opt-btn"
-                        onclick="toggleVariant()"
-                    >
-                        Style
-                    </button>
-                    <button
-                        id="btn-acc"
-                        class="opt-btn"
-                        onclick="changeAccessory()"
-                    >
-                        Accessory
-                    </button>
+            <div class="lobby-content-wrapper">
+                <div class="player-card">
+                    <div id="lobby-avatar" class="setup-preview"></div>
+                    <input
+                        type="text"
+                        id="p-name"
+                        class="name-input"
+                        placeholder="Name"
+                        maxlength="12"
+                        oninput="sendUpdate()"
+                    />
+                    <input
+                        type="range"
+                        id="p-hue"
+                        class="hue-slider"
+                        min="0"
+                        max="360"
+                        oninput="updateColor(this.value)"
+                    />
+                    <div class="opts-row">
+                        <button
+                            id="btn-style"
+                            class="opt-btn"
+                            onclick="toggleVariant()"
+                        >
+                            Boy
+                        </button>
+                        <button
+                            id="btn-acc"
+                            class="opt-btn"
+                            onclick="changeAccessory()"
+                        >
+                            Bear Ears
+                        </button>
+                    </div>
+                </div>
+                <button
+                    id="btn-lobby-gallery"
+                    class="lobby-select-game-btn"
+                    onclick="openMobileGallery()"
+                >
+                    Select Game
+                </button>
+                <div style="color: #fdfcf7; opacity: 0.6; font-size: 0.9rem">
+                    Look at TV for preview
                 </div>
             </div>
-            <div style="margin-top: 15px; color: #fdfcf7; opacity: 0.6">
-                Look at TV for preview
+        </div>
+
+        <!-- DEDICATED READY-UP SCREEN -->
+        <div id="screen-ready" class="screen">
+            <div class="ready-badge-header">STADIUM TUTORIAL</div>
+            <div id="ready-avatar-target"></div>
+            <div id="btn-ready-toggle" onclick="togglePlayerReady()">
+                <span id="ready-btn-label" class="ready-btn-text"
+                    >READY UP</span
+                >
+            </div>
+            <div id="ready-status-prompt" class="ready-sub-prompt">
+                Tap button to confirm readiness
             </div>
         </div>
 
@@ -595,30 +870,26 @@
             </div>
         </div>
 
-        <!-- MENU OVERLAY -->
-        <div id="overlay-menu" class="hidden">
-            <button class="close-menu-btn" onclick="toggleMenu()">×</button>
-            <div class="menu-header">GAME MENU</div>
-            <div
-                id="game-selector-container"
-                class="hidden"
-                style="
-                    width: 100%;
-                    display: flex;
-                    flex-direction: column;
-                    align-items: center;
-                "
-            >
-                <select id="game-list" class="game-select">
-                    <option value="" disabled selected>Select Game...</option>
-                </select>
+        <!-- FULL VISUAL MOBILE GAME GALLERY SCREEN -->
+        <div id="mobile-gallery-screen" class="hidden">
+            <div class="gallery-top-bar">
+                <div class="gallery-top-title">Stadium Gallery</div>
                 <button
-                    class="menu-option primary"
-                    onclick="startGameFromMenu()"
+                    class="close-gallery-btn"
+                    onclick="closeMobileGallery()"
                 >
-                    Start Game
+                    &times;
                 </button>
             </div>
+            <div id="mobile-gallery-scroll"></div>
+        </div>
+
+        <!-- MENU OVERLAY -->
+        <div id="overlay-menu" class="hidden">
+            <button class="close-menu-btn" onclick="toggleMenu()">
+                &times;
+            </button>
+            <div class="menu-header">GAME MENU</div>
             <button
                 id="btn-next-round"
                 class="menu-option primary hidden"
@@ -637,12 +908,13 @@
                 Resume
             </button>
             <button class="menu-option danger" onclick="confirmExit()">
-                Exit Game
+                Exit to Hub
             </button>
         </div>
 
         <script type="module">
             import AvatarSystem from "./src/core/AvatarSystem.js";
+            import { GAME_LIST } from "./src/GameRegistry.js";
 
             let peer, conn;
             let player = {
@@ -653,12 +925,16 @@
                 accessory: "Bear Ears",
                 variant: "default",
             };
-            let p5Lobby, p5Btn, p5Touch;
+            let p5Lobby, p5Btn, p5Touch, p5Ready;
             let currentContext = "IDLE";
+            let isPlayerReady = false;
             let heartbeatInterval = null;
             let lastPacketTime = 0;
             let wakeLock = null;
             const accessories = AvatarSystem.ACCESSORIES;
+
+            let galleryP5Instances = new Map();
+            let galleryObserver = null;
 
             let myUUID = localStorage.getItem("wa_uuid");
             if (!myUUID) {
@@ -807,24 +1083,35 @@
                     if (data.player) player = { ...player, ...data.player };
                     currentContext = data.context || "IDLE";
 
-                    if (data.gameList) {
-                        const sel = document.getElementById("game-list");
-                        sel.innerHTML =
-                            '<option value="" disabled selected>Select Game...</option>';
-                        data.gameList.forEach((g) => {
-                            const opt = document.createElement("option");
-                            opt.value = g.id;
-                            opt.innerText = g.title;
-                            sel.appendChild(opt);
-                        });
+                    // Manage dedicated Select Game button: only visible during lobby
+                    const selectGameBtn =
+                        document.getElementById("btn-lobby-gallery");
+                    if (selectGameBtn) {
+                        if (
+                            data.state === "LOBBY" &&
+                            currentContext === "IDLE"
+                        ) {
+                            selectGameBtn.classList.remove("hidden");
+                        } else {
+                            selectGameBtn.classList.add("hidden");
+                        }
                     }
 
-                    if (data.state === "LOBBY") showScreen("screen-lobby");
-                    else if (data.state === "CONTROLLER") {
+                    if (currentContext === "TUTORIAL") {
+                        // Enter dedicated Ready-Up View during tutorials
+                        closeMobileGallery();
+                        showScreen("screen-ready");
+                        initP5Ready();
+                        resetReadyButtonUI();
+                    } else if (data.state === "LOBBY") {
+                        showScreen("screen-lobby");
+                    } else if (data.state === "CONTROLLER") {
+                        closeMobileGallery();
                         showScreen("screen-controller");
                         updateControllerVisuals();
                         initP5Controller();
                     } else if (data.state === "TOUCHPAD") {
+                        closeMobileGallery();
                         showScreen("screen-touchpad");
                         updateControllerVisuals();
                         initP5Touchpad();
@@ -834,12 +1121,9 @@
 
             function updateLobbyUI() {
                 document.getElementById("p-name").value = player.name;
-                document.getElementById(
-                    "btn-acc"
-                ).innerText = `Accessory: ${player.accessory}`;
-                document.getElementById("btn-style").innerText = `Style: ${
-                    player.variant === "default" ? "Boy" : "Girl"
-                }`;
+                document.getElementById("btn-acc").innerText = player.accessory;
+                document.getElementById("btn-style").innerText =
+                    player.variant === "default" ? "Boy" : "Girl";
             }
 
             window.sendUpdate = () => {
@@ -883,6 +1167,248 @@
                     });
             };
 
+            // --- READY-UP INTERACTION ---
+            function resetReadyButtonUI() {
+                isPlayerReady = false;
+                const btn = document.getElementById("btn-ready-toggle");
+                const label = document.getElementById("ready-btn-label");
+                const prompt = document.getElementById("ready-status-prompt");
+                if (btn) {
+                    btn.classList.remove("is-ready");
+                    btn.style.backgroundColor = player.color;
+                }
+                if (label) label.innerText = "READY UP";
+                if (prompt)
+                    prompt.innerText = "Tap button to confirm readiness";
+            }
+
+            window.togglePlayerReady = () => {
+                if (isPlayerReady) return;
+                isPlayerReady = true;
+                doVibrate(40);
+
+                const btn = document.getElementById("btn-ready-toggle");
+                const label = document.getElementById("ready-btn-label");
+                const prompt = document.getElementById("ready-status-prompt");
+
+                if (btn) btn.classList.add("is-ready");
+                if (label) label.innerText = "READY!";
+                if (prompt)
+                    prompt.innerText = "You are ready! Watch TV for tutorial.";
+
+                sendInput("PRESS");
+                setTimeout(() => sendInput("RELEASE"), 100);
+            };
+
+            function initP5Ready() {
+                if (p5Ready) p5Ready.remove();
+                const target = document.getElementById("ready-avatar-target");
+                if (!target) return;
+                target.innerHTML = "";
+
+                const sketch = (p) => {
+                    let sys;
+                    p.setup = () => {
+                        p.createCanvas(140, 140);
+                        sys = new AvatarSystem(p);
+                    };
+                    p.draw = () => {
+                        p.clear();
+                        p.push();
+                        p.translate(70, 80);
+                        sys.draw({
+                            x: 0,
+                            y: 0,
+                            size: 80,
+                            color: player.color,
+                            variant: player.variant,
+                            accessory: player.accessory,
+                            expression: isPlayerReady ? "happy" : "idle",
+                        });
+                        p.pop();
+                    };
+                };
+                p5Ready = new p5(sketch, "ready-avatar-target");
+            }
+
+            // --- MOBILE P5 GAME GALLERY ---
+            window.openMobileGallery = () => {
+                doVibrate(15);
+                const galleryScreen = document.getElementById(
+                    "mobile-gallery-screen"
+                );
+                galleryScreen.classList.remove("hidden");
+                renderMobileGalleryView();
+            };
+
+            window.closeMobileGallery = () => {
+                cleanupGalleryP5();
+                const galleryScreen = document.getElementById(
+                    "mobile-gallery-screen"
+                );
+                if (galleryScreen) galleryScreen.classList.add("hidden");
+            };
+
+            function cleanupGalleryP5() {
+                if (galleryObserver) {
+                    galleryObserver.disconnect();
+                    galleryObserver = null;
+                }
+                galleryP5Instances.forEach((inst) => {
+                    if (inst && typeof inst.remove === "function") {
+                        inst.remove();
+                    }
+                });
+                galleryP5Instances.clear();
+            }
+
+            function renderMobileGalleryView() {
+                const container = document.getElementById(
+                    "mobile-gallery-scroll"
+                );
+                if (!container) return;
+                cleanupGalleryP5();
+
+                container.innerHTML = GAME_LIST.map((game) => {
+                    const isTouchpad = game.controllerType === "TOUCHPAD";
+                    return `
+                    <div class="mobile-card-item" data-id="${game.id}">
+                        <div class="mobile-card-canvas-box" id="mcard-${
+                            game.id
+                        }"></div>
+                        <div class="mobile-card-info">
+                            <div class="mobile-card-title-row">
+                                <h3 class="mobile-card-title">${game.title}</h3>
+                                <span class="mobile-card-badge">${
+                                    isTouchpad ? "Touchpad" : "One-Button"
+                                }</span>
+                            </div>
+                            <p class="mobile-card-desc">${
+                                game.description || game.tutorial || ""
+                            }</p>
+                            <button class="mobile-launch-btn" onclick="window.launchGameFromMobile('${
+                                game.id
+                            }')">Launch on TV</button>
+                        </div>
+                    </div>
+                `;
+                }).join("");
+
+                // IntersectionObserver to loop ONLY the currently visible card
+                if ("IntersectionObserver" in window) {
+                    galleryObserver = new IntersectionObserver(
+                        (entries) => {
+                            entries.forEach((entry) => {
+                                const gameId = entry.target.dataset.id;
+                                const inst = galleryP5Instances.get(gameId);
+                                if (!inst) return;
+                                if (entry.isIntersecting) {
+                                    inst.loop();
+                                } else {
+                                    inst.noLoop();
+                                }
+                            });
+                        },
+                        { root: container, threshold: 0.15 }
+                    );
+                }
+
+                // Mount lightweight demo P5 sketches into cards
+                GAME_LIST.forEach((game) => {
+                    const canvasBoxId = `mcard-${game.id}`;
+                    const cardEl = container.querySelector(
+                        `[data-id="${game.id}"]`
+                    );
+
+                    const sketch = (p) => {
+                        let gameInstance = null;
+                        const demoPlayers = [
+                            {
+                                id: 0,
+                                name: "NPC 1",
+                                color: "#FF6B6B",
+                                variant: "default",
+                                accessory: "Cat Ears",
+                            },
+                            {
+                                id: 1,
+                                name: "NPC 2",
+                                color: "#4D96FF",
+                                variant: "feminine",
+                                accessory: "Bow",
+                            },
+                            {
+                                id: 2,
+                                name: "NPC 3",
+                                color: "#6BCB77",
+                                variant: "default",
+                                accessory: "Headphones",
+                            },
+                        ];
+
+                        p.setup = () => {
+                            const box = document.getElementById(canvasBoxId);
+                            p.createCanvas(
+                                box.clientWidth || 300,
+                                box.clientHeight || 180
+                            );
+                            p.pixelDensity(1);
+                            p.frameRate(30);
+
+                            const context = {
+                                p5: p,
+                                players: {
+                                    getActivePlayers: () => demoPlayers,
+                                    getPlayer: () => null,
+                                },
+                                ui: {
+                                    updateScoreboard: () => {},
+                                    showMessage: () => {},
+                                    showTurnMessage: () => {},
+                                    hideMessage: () => {},
+                                    showPodium: () => {},
+                                    showTournamentStandings: () => {},
+                                },
+                                audio: null,
+                            };
+
+                            try {
+                                gameInstance = new game.class(context, {
+                                    mode: "demo",
+                                });
+                                gameInstance.setup();
+                            } catch (err) {
+                                console.error(
+                                    `Error loading ${game.title} preview:`,
+                                    err
+                                );
+                            }
+
+                            p.noLoop();
+                        };
+
+                        p.draw = () => {
+                            if (gameInstance) gameInstance.draw();
+                        };
+                    };
+
+                    const p5Inst = new p5(sketch, canvasBoxId);
+                    galleryP5Instances.set(game.id, p5Inst);
+
+                    if (galleryObserver && cardEl) {
+                        galleryObserver.observe(cardEl);
+                    } else {
+                        p5Inst.loop();
+                    }
+                });
+            }
+
+            window.launchGameFromMobile = (gameId) => {
+                doVibrate(20);
+                window.sendCmd("SELECT_GAME", gameId);
+                window.closeMobileGallery();
+            };
+
             window.toggleMenu = () => {
                 doVibrate(15);
                 const menu = document.getElementById("overlay-menu");
@@ -893,9 +1419,6 @@
                         .classList.add("hidden");
                     document
                         .getElementById("btn-play-again")
-                        .classList.add("hidden");
-                    document
-                        .getElementById("game-selector-container")
                         .classList.add("hidden");
                     document
                         .getElementById("btn-resume")
@@ -909,14 +1432,6 @@
                         document
                             .getElementById("btn-play-again")
                             .classList.remove("hidden");
-                    if (currentContext === "IDLE") {
-                        document
-                            .getElementById("game-selector-container")
-                            .classList.remove("hidden");
-                        document
-                            .getElementById("btn-resume")
-                            .classList.add("hidden");
-                    }
                 }
                 menu.classList.toggle("hidden");
             };
@@ -929,7 +1444,10 @@
                         action: action,
                         payload: payload,
                     });
-                toggleMenu();
+                const menu = document.getElementById("overlay-menu");
+                if (menu && !menu.classList.contains("hidden")) {
+                    menu.classList.add("hidden");
+                }
             };
 
             window.confirmExit = () => {
@@ -937,10 +1455,6 @@
             };
             window.confirmPlayAgain = () => {
                 if (confirm("Restart game?")) window.sendCmd("PLAY_AGAIN");
-            };
-            window.startGameFromMenu = () => {
-                const gameId = document.getElementById("game-list").value;
-                if (gameId) window.sendCmd("SELECT_GAME", gameId);
             };
 
             const sendInput = (action, payload = null) => {
