@@ -1,0 +1,1120 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+        />
+        <title>OpenTap Controller</title>
+        <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/p5.min.js"></script>
+        <style>
+            :root {
+                --bg-base: #211b18;
+                --accent-coral: #ff5a36;
+                --card-surface: #ffffff;
+                --text-main: #2d2522;
+            }
+
+            body {
+                margin: 0;
+                padding: 0;
+                background: var(--bg-base);
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                    Roboto, sans-serif;
+                overflow: hidden;
+                touch-action: none;
+                user-select: none;
+                color: #333;
+                height: 100vh;
+                width: 100vw;
+            }
+
+            .screen {
+                display: none;
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                background: var(--bg-base);
+                z-index: 10;
+            }
+
+            .active {
+                display: flex !important;
+            }
+
+            .menu-btn {
+                position: fixed;
+                top: 15px;
+                right: 15px;
+                background: rgba(255, 255, 255, 0.15);
+                border: 2px solid rgba(255, 255, 255, 0.3);
+                color: white;
+                width: 44px;
+                height: 44px;
+                border-radius: 50%;
+                cursor: pointer;
+                z-index: 999;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 0;
+            }
+
+            #screen-login {
+                background: var(--bg-base);
+                color: white;
+            }
+
+            input.code-input {
+                font-size: 32px;
+                padding: 15px;
+                text-align: center;
+                text-transform: uppercase;
+                border-radius: 14px;
+                border: none;
+                background: rgba(255, 255, 255, 0.12);
+                color: white;
+                font-weight: 900;
+                letter-spacing: 2px;
+                width: 220px;
+                display: block;
+                margin-bottom: 20px;
+            }
+
+            button.action-btn {
+                font-size: 18px;
+                padding: 16px 30px;
+                background: var(--accent-coral);
+                border: none;
+                color: white;
+                border-radius: 30px;
+                font-weight: bold;
+                width: 220px;
+                cursor: pointer;
+                transition: transform 0.1s;
+            }
+
+            button.action-btn:active {
+                transform: scale(0.97);
+            }
+
+            #screen-lobby {
+                background: var(--bg-base);
+            }
+
+            .player-card {
+                background: white;
+                border-radius: 18px;
+                padding: 22px;
+                width: 90%;
+                max-width: 350px;
+                display: flex;
+                flex-direction: column;
+                gap: 15px;
+                color: var(--text-main);
+                box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            }
+
+            .setup-preview {
+                width: 100%;
+                height: 200px;
+                background: #f3ece1;
+                border-radius: 12px;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                overflow: hidden;
+            }
+
+            .name-input {
+                width: 100%;
+                padding: 12px 15px;
+                font-size: 1.15rem;
+                text-align: center;
+                border: 1px solid #d8d1c7;
+                border-radius: 8px;
+                box-sizing: border-box;
+                font-weight: bold;
+            }
+
+            .hue-slider {
+                -webkit-appearance: none;
+                appearance: none;
+                width: 100%;
+                height: 12px;
+                border-radius: 6px;
+                background: linear-gradient(
+                    to right,
+                    #ff0000,
+                    #ffff00,
+                    #00ff00,
+                    #00ffff,
+                    #0000ff,
+                    #ff00ff,
+                    #ff0000
+                );
+                outline: none;
+                margin: 10px 0;
+            }
+
+            .hue-slider::-webkit-slider-thumb {
+                -webkit-appearance: none;
+                width: 28px;
+                height: 28px;
+                background: white;
+                border: 3px solid #211b18;
+                border-radius: 50%;
+                box-shadow: 0 2px 5px rgba(0, 0, 0, 0.3);
+            }
+
+            .opts-row {
+                display: flex;
+                gap: 10px;
+            }
+
+            .opt-btn {
+                flex: 1;
+                padding: 12px;
+                background: #f3ece1;
+                border: 1px solid #e8e1d5;
+                border-radius: 8px;
+                font-weight: bold;
+                color: #2d2522;
+                font-size: 0.9rem;
+            }
+
+            #screen-controller {
+                background: var(--bg-base);
+            }
+
+            #btn-big {
+                width: 85vw;
+                height: 60vh;
+                background: var(--accent-coral);
+                border-radius: 36px;
+                border: 8px solid rgba(0, 0, 0, 0.15);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                flex-direction: column;
+                transition: transform 0.05s;
+            }
+
+            #btn-big:active {
+                transform: scale(0.96);
+            }
+
+            #screen-touchpad {
+                background: #181412;
+            }
+
+            #touch-click-zone {
+                flex-basis: 30%;
+                width: 100%;
+                background: var(--accent-coral);
+                border-bottom: 6px solid rgba(0, 0, 0, 0.2);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                flex-direction: column;
+                position: relative;
+                overflow: hidden;
+            }
+
+            #touch-click-zone:active {
+                filter: brightness(0.92);
+                transform: translateY(2px);
+            }
+
+            #touch-move-zone {
+                flex-basis: 70%;
+                width: 100%;
+                background: var(--bg-base);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+
+            .dpad-grid {
+                display: grid;
+                grid-template-columns: repeat(3, 85px);
+                grid-template-rows: repeat(3, 85px);
+                gap: 8px;
+                transform: scale(0.9);
+            }
+
+            .dpad-btn {
+                background: #faf6f0;
+                border-radius: 14px;
+                border: 2px solid #d8d1c7;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 24px;
+                color: #2d2522;
+                font-weight: bold;
+                box-shadow: 0 4px 0 #c4bcb1;
+                transition: transform 0.05s, box-shadow 0.05s;
+            }
+
+            .dpad-btn:active {
+                transform: translateY(4px);
+                box-shadow: 0 0 0 #c4bcb1;
+                background: #e8e1d5;
+            }
+
+            .dpad-center {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: rgba(255, 255, 255, 0.3);
+                font-weight: bold;
+                font-size: 0.8rem;
+                text-align: center;
+            }
+
+            #overlay-menu {
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(33, 27, 24, 0.95);
+                z-index: 2000;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                gap: 15px;
+            }
+
+            .menu-header {
+                color: #fdfcf7;
+                font-size: 1.5rem;
+                font-weight: 900;
+                letter-spacing: 1px;
+                margin-bottom: 10px;
+            }
+
+            .menu-option {
+                background: white;
+                border: none;
+                width: 80%;
+                padding: 18px;
+                font-size: 1.15rem;
+                font-weight: bold;
+                border-radius: 30px;
+                color: #2d2522;
+                cursor: pointer;
+            }
+
+            .menu-option.danger {
+                background: #e55353;
+                color: white;
+            }
+
+            .menu-option.primary {
+                background: var(--accent-coral);
+                color: white;
+            }
+
+            select.game-select {
+                width: 80%;
+                padding: 15px;
+                font-size: 1.1rem;
+                border-radius: 12px;
+                margin-bottom: 15px;
+                border: none;
+                font-weight: bold;
+            }
+
+            .close-menu-btn {
+                position: absolute;
+                top: 20px;
+                right: 20px;
+                background: none;
+                border: none;
+                color: white;
+                font-size: 40px;
+                cursor: pointer;
+            }
+
+            #screen-disconnect {
+                background: rgba(33, 27, 24, 0.96);
+                color: white;
+                z-index: 3000;
+                text-align: center;
+            }
+
+            .spinner {
+                width: 50px;
+                height: 50px;
+                border: 5px solid rgba(255, 255, 255, 0.2);
+                border-radius: 50%;
+                border-top-color: var(--accent-coral);
+                animation: spin 1s ease-in-out infinite;
+                margin-bottom: 20px;
+            }
+
+            @keyframes spin {
+                to {
+                    transform: rotate(360deg);
+                }
+            }
+
+            .hidden {
+                display: none !important;
+            }
+        </style>
+    </head>
+    <body>
+        <button
+            id="global-menu-btn"
+            class="menu-btn hidden"
+            onclick="toggleMenu()"
+            aria-label="Settings"
+        >
+            <svg
+                width="22"
+                height="22"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+            >
+                <circle cx="12" cy="12" r="3"></circle>
+                <path
+                    d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"
+                ></path>
+            </svg>
+        </button>
+
+        <!-- LOGIN -->
+        <div id="screen-login" class="screen active">
+            <h1
+                style="
+                    color: #ff5a36;
+                    margin-bottom: 30px;
+                    letter-spacing: 1px;
+                    font-weight: 900;
+                "
+            >
+                OPENTAP<br />STADIUM
+            </h1>
+            <input
+                type="text"
+                id="room-code"
+                class="code-input"
+                placeholder="CODE"
+                maxlength="4"
+            />
+            <button class="action-btn" onclick="connect()">JOIN GAME</button>
+            <p id="status" style="margin-top: 20px; color: #f59e0b; opacity: 0">
+                Connecting...
+            </p>
+        </div>
+
+        <!-- RECONNECTING / ERROR -->
+        <div id="screen-disconnect" class="screen">
+            <div class="spinner"></div>
+            <h2 id="disc-title">Disconnected</h2>
+            <p id="disc-msg">Connection lost. Host may have closed.</p>
+            <div
+                style="
+                    display: flex;
+                    flex-direction: column;
+                    gap: 10px;
+                    margin-top: 20px;
+                "
+            >
+                <button
+                    class="action-btn"
+                    style="background: #e55353"
+                    onclick="location.reload()"
+                >
+                    Retry Connection
+                </button>
+                <button
+                    class="action-btn"
+                    style="background: #7a6f68"
+                    onclick="backToLogin()"
+                >
+                    Enter New Code
+                </button>
+            </div>
+        </div>
+
+        <!-- LOBBY -->
+        <div id="screen-lobby" class="screen">
+            <div class="player-card">
+                <div id="lobby-avatar" class="setup-preview"></div>
+                <input
+                    type="text"
+                    id="p-name"
+                    class="name-input"
+                    placeholder="Name"
+                    maxlength="12"
+                    oninput="sendUpdate()"
+                />
+                <input
+                    type="range"
+                    id="p-hue"
+                    class="hue-slider"
+                    min="0"
+                    max="360"
+                    oninput="updateColor(this.value)"
+                />
+                <div class="opts-row">
+                    <button
+                        id="btn-style"
+                        class="opt-btn"
+                        onclick="toggleVariant()"
+                    >
+                        Style
+                    </button>
+                    <button
+                        id="btn-acc"
+                        class="opt-btn"
+                        onclick="changeAccessory()"
+                    >
+                        Accessory
+                    </button>
+                </div>
+            </div>
+            <div style="margin-top: 15px; color: #fdfcf7; opacity: 0.6">
+                Look at TV for preview
+            </div>
+        </div>
+
+        <!-- BUTTON CONTROLLER -->
+        <div id="screen-controller" class="screen">
+            <div id="btn-big">
+                <div id="btn-avatar-target" style="pointer-events: none"></div>
+                <span
+                    style="
+                        pointer-events: none;
+                        margin-top: 10px;
+                        color: white;
+                        font-size: 2rem;
+                        font-weight: 900;
+                        opacity: 0.95;
+                    "
+                    >TAP!</span
+                >
+            </div>
+        </div>
+
+        <!-- D-PAD CONTROLLER -->
+        <div id="screen-touchpad" class="screen">
+            <div id="touch-click-zone">
+                <div
+                    id="touch-avatar-target"
+                    style="pointer-events: none"
+                ></div>
+                <span
+                    style="
+                        pointer-events: none;
+                        margin-top: 5px;
+                        color: white;
+                        font-size: 1.2rem;
+                        font-weight: 800;
+                        opacity: 0.95;
+                    "
+                    >TAP TO CLICK</span
+                >
+            </div>
+            <div id="touch-move-zone">
+                <div class="dpad-grid">
+                    <div
+                        class="dpad-btn"
+                        onmousedown="sendVec(-0.7, -0.7)"
+                        ontouchstart="sendVec(-0.7, -0.7, event)"
+                    >
+                        ↖
+                    </div>
+                    <div
+                        class="dpad-btn"
+                        onmousedown="sendVec(0, -1)"
+                        ontouchstart="sendVec(0, -1, event)"
+                    >
+                        ▲
+                    </div>
+                    <div
+                        class="dpad-btn"
+                        onmousedown="sendVec(0.7, -0.7)"
+                        ontouchstart="sendVec(0.7, -0.7, event)"
+                    >
+                        ↗
+                    </div>
+                    <div
+                        class="dpad-btn"
+                        onmousedown="sendVec(-1, 0)"
+                        ontouchstart="sendVec(-1, 0, event)"
+                    >
+                        ◀
+                    </div>
+                    <div class="dpad-center">HOLD<br />TO<br />MOVE</div>
+                    <div
+                        class="dpad-btn"
+                        onmousedown="sendVec(1, 0)"
+                        ontouchstart="sendVec(1, 0, event)"
+                    >
+                        ▶
+                    </div>
+                    <div
+                        class="dpad-btn"
+                        onmousedown="sendVec(-0.7, 0.7)"
+                        ontouchstart="sendVec(-0.7, 0.7, event)"
+                    >
+                        ↙
+                    </div>
+                    <div
+                        class="dpad-btn"
+                        onmousedown="sendVec(0, 1)"
+                        ontouchstart="sendVec(0, 1, event)"
+                    >
+                        ▼
+                    </div>
+                    <div
+                        class="dpad-btn"
+                        onmousedown="sendVec(0.7, 0.7)"
+                        ontouchstart="sendVec(0.7, 0.7, event)"
+                    >
+                        ↘
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MENU OVERLAY -->
+        <div id="overlay-menu" class="hidden">
+            <button class="close-menu-btn" onclick="toggleMenu()">×</button>
+            <div class="menu-header">GAME MENU</div>
+            <div
+                id="game-selector-container"
+                class="hidden"
+                style="
+                    width: 100%;
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                "
+            >
+                <select id="game-list" class="game-select">
+                    <option value="" disabled selected>Select Game...</option>
+                </select>
+                <button
+                    class="menu-option primary"
+                    onclick="startGameFromMenu()"
+                >
+                    Start Game
+                </button>
+            </div>
+            <button
+                id="btn-next-round"
+                class="menu-option primary hidden"
+                onclick="sendCmd('NEXT_ROUND')"
+            >
+                Start Next Round
+            </button>
+            <button
+                id="btn-play-again"
+                class="menu-option primary hidden"
+                onclick="confirmPlayAgain()"
+            >
+                Play Again
+            </button>
+            <button id="btn-resume" class="menu-option" onclick="toggleMenu()">
+                Resume
+            </button>
+            <button class="menu-option danger" onclick="confirmExit()">
+                Exit Game
+            </button>
+        </div>
+
+        <script type="module">
+            import AvatarSystem from "./src/core/AvatarSystem.js";
+
+            let peer, conn;
+            let player = {
+                id: -1,
+                color: "#e74c3c",
+                hue: 0,
+                name: "Guest",
+                accessory: "Bear Ears",
+                variant: "default",
+            };
+            let p5Lobby, p5Btn, p5Touch;
+            let currentContext = "IDLE";
+            let heartbeatInterval = null;
+            let lastPacketTime = 0;
+            let wakeLock = null;
+            const accessories = AvatarSystem.ACCESSORIES;
+
+            let myUUID = localStorage.getItem("wa_uuid");
+            if (!myUUID) {
+                myUUID = "user-" + Math.random().toString(36).substr(2, 9);
+                localStorage.setItem("wa_uuid", myUUID);
+            }
+
+            async function requestWakeLock() {
+                try {
+                    if ("wakeLock" in navigator) {
+                        wakeLock = await navigator.wakeLock.request("screen");
+                        console.log("[Controller] Wake Lock active");
+                    }
+                } catch (err) {
+                    console.log("[Controller] Wake Lock Error:", err);
+                }
+            }
+
+            window.connect = () => {
+                const code = document
+                    .getElementById("room-code")
+                    .value.toUpperCase()
+                    .trim();
+                if (code.length < 4) return;
+
+                document.getElementById("status").style.opacity = 1;
+                document.getElementById("status").innerText = "Connecting...";
+                requestWakeLock();
+
+                if (peer) peer.destroy();
+                peer = new Peer();
+
+                peer.on("open", (id) => {
+                    connectToHost(code);
+                });
+
+                peer.on("error", (err) => {
+                    console.error(err);
+                    if (err.type === "peer-unavailable") {
+                        showDisconnectScreen(
+                            "Room Not Found",
+                            "Check the code on TV."
+                        );
+                    } else {
+                        showDisconnectScreen(
+                            "Connection Error",
+                            "Check internet connection."
+                        );
+                    }
+                });
+
+                peer.on("disconnected", () => {
+                    showDisconnectScreen();
+                    peer.reconnect();
+                });
+            };
+
+            function connectToHost(code) {
+                if (conn) conn.close();
+                conn = peer.connect(`wonder-${code}`);
+
+                conn.on("open", () => {
+                    document.getElementById("status").innerText =
+                        "Authenticating...";
+                    hideDisconnectScreen();
+                    lastPacketTime = Date.now();
+                    startHeartbeat();
+                });
+
+                conn.on("data", handleData);
+
+                conn.on("close", () => {
+                    showDisconnectScreen();
+                });
+            }
+
+            function startHeartbeat() {
+                if (heartbeatInterval) clearInterval(heartbeatInterval);
+
+                heartbeatInterval = setInterval(() => {
+                    const now = Date.now();
+
+                    if (conn && conn.open) {
+                        conn.send({ type: "HEARTBEAT" });
+                    }
+
+                    if (now - lastPacketTime > 4000) {
+                        showDisconnectScreen(
+                            "Host Lost",
+                            "Host stopped responding."
+                        );
+                    }
+                }, 2000);
+            }
+
+            function showDisconnectScreen(
+                title = "Disconnected",
+                msg = "Connection lost."
+            ) {
+                document.getElementById("disc-title").innerText = title;
+                document.getElementById("disc-msg").innerText = msg;
+                document
+                    .getElementById("screen-disconnect")
+                    .classList.add("active");
+            }
+
+            function hideDisconnectScreen() {
+                document
+                    .getElementById("screen-disconnect")
+                    .classList.remove("active");
+            }
+
+            window.backToLogin = () => {
+                const url = new URL(window.location.href);
+                url.searchParams.delete("room");
+                window.history.pushState({}, "", url);
+
+                document.getElementById("room-code").value = "";
+
+                if (peer) peer.destroy();
+                if (heartbeatInterval) clearInterval(heartbeatInterval);
+
+                hideDisconnectScreen();
+                showScreen("screen-login");
+            };
+
+            function handleData(data) {
+                lastPacketTime = Date.now();
+
+                if (data.type === "WHO_ARE_YOU")
+                    conn.send({ type: "HELLO", uuid: myUUID });
+                else if (data.type === "INIT") {
+                    player = { ...player, ...data };
+                    showScreen("screen-lobby");
+                    initP5Lobby();
+                    updateLobbyUI();
+                    document
+                        .getElementById("global-menu-btn")
+                        .classList.remove("hidden");
+                    doVibrate(50);
+                } else if (data.type === "PING")
+                    conn.send({ type: "PONG", ts: data.ts });
+                else if (data.type === "VIBRATE")
+                    doVibrate(data.duration || 200);
+                else if (data.type === "STATE_CHANGE") {
+                    if (data.player) player = { ...player, ...data.player };
+                    currentContext = data.context || "IDLE";
+
+                    if (data.gameList) {
+                        const sel = document.getElementById("game-list");
+                        sel.innerHTML =
+                            '<option value="" disabled selected>Select Game...</option>';
+                        data.gameList.forEach((g) => {
+                            const opt = document.createElement("option");
+                            opt.value = g.id;
+                            opt.innerText = g.title;
+                            sel.appendChild(opt);
+                        });
+                    }
+
+                    if (data.state === "LOBBY") showScreen("screen-lobby");
+                    else if (data.state === "CONTROLLER") {
+                        showScreen("screen-controller");
+                        updateControllerVisuals();
+                        initP5Controller();
+                    } else if (data.state === "TOUCHPAD") {
+                        showScreen("screen-touchpad");
+                        updateControllerVisuals();
+                        initP5Touchpad();
+                    }
+                }
+            }
+
+            function updateLobbyUI() {
+                document.getElementById("p-name").value = player.name;
+                document.getElementById(
+                    "btn-acc"
+                ).innerText = `Accessory: ${player.accessory}`;
+                document.getElementById("btn-style").innerText = `Style: ${
+                    player.variant === "default" ? "Boy" : "Girl"
+                }`;
+            }
+
+            window.sendUpdate = () => {
+                player.name = document.getElementById("p-name").value;
+                if (conn)
+                    conn.send({
+                        type: "UPDATE_PROFILE",
+                        payload: { name: player.name },
+                    });
+            };
+            window.updateColor = (val) => {
+                player.color = hslToHex(val, 70, 50);
+                if (conn)
+                    conn.send({
+                        type: "UPDATE_PROFILE",
+                        payload: { color: player.color },
+                    });
+            };
+
+            window.changeAccessory = () => {
+                let idx = accessories.indexOf(player.accessory);
+                player.accessory = accessories[(idx + 1) % accessories.length];
+                updateLobbyUI();
+                doVibrate(10);
+                if (conn)
+                    conn.send({
+                        type: "UPDATE_PROFILE",
+                        payload: { accessory: player.accessory },
+                    });
+            };
+
+            window.toggleVariant = () => {
+                player.variant =
+                    player.variant === "default" ? "feminine" : "default";
+                updateLobbyUI();
+                doVibrate(10);
+                if (conn)
+                    conn.send({
+                        type: "UPDATE_PROFILE",
+                        payload: { variant: player.variant },
+                    });
+            };
+
+            window.toggleMenu = () => {
+                doVibrate(15);
+                const menu = document.getElementById("overlay-menu");
+                const isHidden = menu.classList.contains("hidden");
+                if (isHidden) {
+                    document
+                        .getElementById("btn-next-round")
+                        .classList.add("hidden");
+                    document
+                        .getElementById("btn-play-again")
+                        .classList.add("hidden");
+                    document
+                        .getElementById("game-selector-container")
+                        .classList.add("hidden");
+                    document
+                        .getElementById("btn-resume")
+                        .classList.remove("hidden");
+
+                    if (currentContext === "ROUND_OVER")
+                        document
+                            .getElementById("btn-next-round")
+                            .classList.remove("hidden");
+                    if (currentContext === "GAME_OVER")
+                        document
+                            .getElementById("btn-play-again")
+                            .classList.remove("hidden");
+                    if (currentContext === "IDLE") {
+                        document
+                            .getElementById("game-selector-container")
+                            .classList.remove("hidden");
+                        document
+                            .getElementById("btn-resume")
+                            .classList.add("hidden");
+                    }
+                }
+                menu.classList.toggle("hidden");
+            };
+
+            window.sendCmd = (action, payload = null) => {
+                doVibrate(10);
+                if (conn)
+                    conn.send({
+                        type: "COMMAND",
+                        action: action,
+                        payload: payload,
+                    });
+                toggleMenu();
+            };
+
+            window.confirmExit = () => {
+                if (confirm("End game for everyone?")) window.sendCmd("EXIT");
+            };
+            window.confirmPlayAgain = () => {
+                if (confirm("Restart game?")) window.sendCmd("PLAY_AGAIN");
+            };
+            window.startGameFromMenu = () => {
+                const gameId = document.getElementById("game-list").value;
+                if (gameId) window.sendCmd("SELECT_GAME", gameId);
+            };
+
+            const sendInput = (action, payload = null) => {
+                if (action === "PRESS") doVibrate(15);
+                if (conn)
+                    conn.send({
+                        type: "INPUT",
+                        action: action,
+                        payload: payload,
+                    });
+            };
+
+            const btn = document.getElementById("btn-big");
+            const clickZone = document.getElementById("touch-click-zone");
+
+            [btn, clickZone].forEach((el) => {
+                el.addEventListener("touchstart", (e) => {
+                    e.preventDefault();
+                    sendInput("PRESS");
+                    el.style.transform = "scale(0.96)";
+                });
+                el.addEventListener("touchend", (e) => {
+                    e.preventDefault();
+                    sendInput("RELEASE");
+                    el.style.transform = "scale(1)";
+                });
+                el.addEventListener("mousedown", () => {
+                    sendInput("PRESS");
+                    el.style.transform = "scale(0.96)";
+                });
+                el.addEventListener("mouseup", () => {
+                    sendInput("RELEASE");
+                    el.style.transform = "scale(1)";
+                });
+            });
+
+            window.sendVec = (x, y, e) => {
+                if (e) e.preventDefault();
+                doVibrate(10);
+                sendInput("VECTOR", { x, y });
+            };
+
+            window.addEventListener("touchend", () =>
+                sendInput("VECTOR", { x: 0, y: 0 })
+            );
+            window.addEventListener("mouseup", () =>
+                sendInput("VECTOR", { x: 0, y: 0 })
+            );
+
+            function doVibrate(ms) {
+                if (navigator.vibrate) navigator.vibrate(ms);
+            }
+
+            function showScreen(id) {
+                document
+                    .querySelectorAll(".screen")
+                    .forEach((s) => s.classList.remove("active"));
+                document.getElementById(id).classList.add("active");
+            }
+
+            function initP5Lobby() {
+                if (p5Lobby) return;
+                const sketch = (p) => {
+                    let sys;
+                    p.setup = () => {
+                        p.createCanvas(200, 200);
+                        sys = new AvatarSystem(p);
+                    };
+                    p.draw = () => {
+                        p.clear();
+                        p.translate(100, 120);
+                        sys.draw({
+                            x: 0,
+                            y: 0,
+                            size: 110,
+                            color: player.color,
+                            variant: player.variant,
+                            accessory: player.accessory,
+                            expression: "happy",
+                        });
+                    };
+                };
+                p5Lobby = new p5(sketch, "lobby-avatar");
+            }
+
+            function initP5Controller() {
+                if (p5Btn) p5Btn.remove();
+                document.getElementById("btn-avatar-target").innerHTML = "";
+                const sketch = (p) => {
+                    let sys;
+                    p.setup = () => {
+                        p.createCanvas(150, 150);
+                        sys = new AvatarSystem(p);
+                    };
+                    p.draw = () => {
+                        p.clear();
+                        p.translate(75, 100);
+                        sys.draw({
+                            x: 0,
+                            y: 0,
+                            size: 80,
+                            color: player.color,
+                            variant: player.variant,
+                            accessory: player.accessory,
+                            expression: "angry",
+                        });
+                    };
+                };
+                p5Btn = new p5(sketch, "btn-avatar-target");
+            }
+
+            function initP5Touchpad() {
+                if (p5Touch) p5Touch.remove();
+                document.getElementById("touch-avatar-target").innerHTML = "";
+                const sketch = (p) => {
+                    let sys;
+                    p.setup = () => {
+                        p.createCanvas(100, 100);
+                        sys = new AvatarSystem(p);
+                    };
+                    p.draw = () => {
+                        p.clear();
+                        p.translate(50, 70);
+                        sys.draw({
+                            x: 0,
+                            y: 0,
+                            size: 60,
+                            color: player.color,
+                            variant: player.variant,
+                            accessory: player.accessory,
+                            expression: "idle",
+                        });
+                    };
+                };
+                p5Touch = new p5(sketch, "touch-avatar-target");
+            }
+
+            function updateControllerVisuals() {
+                btn.style.backgroundColor = player.color;
+                document.getElementById(
+                    "touch-click-zone"
+                ).style.backgroundColor = player.color;
+            }
+
+            function hslToHex(h, s, l) {
+                l /= 100;
+                const a = (s * Math.min(l, 1 - l)) / 100;
+                const f = (n) => {
+                    const k = (n + h / 30) % 12;
+                    const c = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+                    return Math.round(255 * c)
+                        .toString(16)
+                        .padStart(2, "0");
+                };
+                return `#${f(0)}${f(8)}${f(4)}`;
+            }
+
+            window.addEventListener("load", () => {
+                const params = new URLSearchParams(window.location.search);
+                const room = params.get("room");
+                if (room) {
+                    document.getElementById("room-code").value = room;
+                    setTimeout(() => connect(), 500);
+                }
+            });
+
+            document.addEventListener("visibilitychange", async () => {
+                if (
+                    wakeLock !== null &&
+                    document.visibilityState === "visible"
+                ) {
+                    requestWakeLock();
+                }
+            });
+        </script>
+    </body>
+</html>

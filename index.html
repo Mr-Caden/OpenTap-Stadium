@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+        />
+        <title>OpenTap Stadium</title>
+
+        <link
+            rel="icon"
+            href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><circle cx=%2250%22 cy=%2250%22 r=%2244%22 fill=%22%23FF5A36%22/><circle cx=%2250%22 cy=%2250%22 r=%2220%22 fill=%22%23FAF6F0%22/></svg>"
+        />
+        <link rel="stylesheet" href="style.css" />
+
+        <!-- External Libraries -->
+        <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/p5.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    </head>
+    <body>
+        <div id="app-layer">
+            <header id="main-header">
+                <div class="logo">
+                    <span class="logo-dot"></span>
+                    OpenTap Stadium
+                </div>
+                <button id="settings-btn" class="icon-btn">
+                    Players Config
+                </button>
+            </header>
+
+            <main id="hub-grid">
+                <!-- Injected by main.js -->
+            </main>
+
+            <div id="setup-overlay" class="overlay hidden">
+                <div class="lobby-container">
+                    <div class="lobby-header">
+                        <h2>Player Setup</h2>
+                        <div class="lobby-controls">
+                            <button id="add-player-btn" class="secondary-btn">
+                                Add Local Player
+                            </button>
+                            <button id="save-players-btn" class="primary-btn">
+                                Start Playing
+                            </button>
+                        </div>
+                    </div>
+                    <div id="player-config-grid"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ATTRACT MODE LAYER -->
+        <div id="attract-layer" class="hidden">
+            <div id="attract-canvas-container"></div>
+            <div class="attract-overlay-content">
+                <div class="attract-logo">OPENTAP STADIUM</div>
+                <div class="attract-cta">PRESS ANY KEY TO START</div>
+                <div id="attract-game-title">Sumo Discs</div>
+                <div class="attract-qr-container">
+                    <p>Scan to Join</p>
+                    <div id="attract-qr-target"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="game-stage" class="hidden">
+            <div id="game-canvas-container"></div>
+            <div id="game-ui-layer">
+                <div id="ui-top-bar">
+                    <button id="back-to-hub-btn" class="small-btn">
+                        Exit Game
+                    </button>
+                    <div id="ui-scoreboard"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="ui-center-message"></div>
+
+        <script type="module" src="./src/main.js"></script>
+    </body>
+</html>
