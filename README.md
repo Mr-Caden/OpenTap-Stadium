@@ -1,10 +1,8 @@
 # OpenTap Stadium
 
-**A Hybrid Local/Remote Social Gaming Platform.**
+**A Modular, Open-Source Hybrid Local/Remote Social Gaming Platform.**
 
-> **COPYRIGHT NOTICE:**  
-> Copyright (c) 2025 Caden Gamache. All Rights Reserved.  
-> This source code is proprietary. Unauthorized copying, distribution, or modification of this software is strictly prohibited. See `CREDITS.md` for open-source license attributions.
+OpenTap Stadium is released under the **MIT License**. It is fully open source, extensible, and designed for developers to fork, customize, and build their own living room party games.
 
 ---
 
@@ -26,6 +24,7 @@ Unlike traditional web-based party games, OpenTap Stadium features a lag-compens
 * **Viewport-Aware Canvas Optimization:** Hub preview cards only execute render loops when visible within the viewport using an `IntersectionObserver`, preventing CPU and GPU context thrashing.
 * **Memory & Canvas Sanitization:** Automatic lifecycle tracking disposes of P5.js instances and Matter.js worlds on teardown, preventing memory leaks during long gaming sessions.
 * **Session Persistence:** Mobile players can lock their screens or refresh their browsers and automatically reconnect to their existing player slot without losing points.
+* **Open & Hackable:** Write a new minigame in a single self-contained class, plug it into the registry, and the engine automatically generates cards, routes controller states, and includes it in tournaments.
 
 ---
 
@@ -151,13 +150,29 @@ export default class ExampleGame extends BaseGame {
 }
 ```
 
-Add the class to `REGISTERED_GAMES` in `src/GameRegistry.js`. The engine will automatically generate its Hub card, route its controller type, handle live demo tutorials, and incorporate it into Tournament drafts.
+Add the class to `REGISTERED_GAMES` in `src/GameRegistry.js`:
+
+```javascript
+const REGISTERED_GAMES = [
+    SumoDiscs,
+    HopHero,
+    // ...
+    ExampleGame
+];
+```
+
+The engine will automatically generate its Hub card, route its controller type, handle live demo tutorials, and incorporate it into Tournament drafts.
 
 ---
 
 ## License & Credits
 
-This project source code is **Proprietary**.  
-Copyright (c) 2025 Caden Gamache. All Rights Reserved.
+OpenTap Stadium is open-source software licensed under the **[MIT License](LICENSE)**.
 
-See `CREDITS.md` for full open-source license attributions for P5.js, Matter.js, PeerJS, and QRCode.js.
+Third-party libraries used in this project:
+* **p5.js** (LGPL-2.1)
+* **Matter.js** (MIT)
+* **PeerJS** (MIT)
+* **QRCode.js** (MIT)
+
+See `CREDITS.md` for complete attributions.
