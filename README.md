@@ -1,3 +1,65 @@
+# OpenTap Stadium
+
+**A Hybrid Local/Remote Social Gaming Platform.**
+
+> **COPYRIGHT NOTICE:**  
+> Copyright (c) 2025 Caden Gamache. All Rights Reserved.  
+> This source code is proprietary. Unauthorized copying, distribution, or modification of this software is strictly prohibited. See `CREDITS.md` for open-source license attributions.
+
+---
+
+## Overview
+
+OpenTap Stadium is a high-performance, browser-based party platform designed to bridge the gap between shared displays (Desktop, Television, Projector) and mobile devices. It enables 2 to 8 players to compete in rapid-fire minigames using a central host screen and their personal smartphones as controllers.
+
+Unlike traditional web-based party games, OpenTap Stadium features a lag-compensated input pipeline, deterministic fixed-timestep physics, and a modular architecture that keeps individual minigames completely decoupled from meta-systems like tournaments, network synchronization, and avatar rendering.
+
+---
+
+## Key Features
+
+* **Zero-App Entry:** Players join in seconds by scanning a dynamically generated QR code. No app store downloads or installations required.
+* **Hybrid Multiplayer:** Supports local keyboard players and remote mobile controllers simultaneously.
+* **Lag Equalization:** The host engine calculates network round-trip time (RTT) and artificially delays local keyboard inputs to match mobile latency, maintaining competitive fairness.
+* **Deterministic 60Hz Physics:** A fixed-timestep accumulator decouples physics calculations from display refresh rates, ensuring identical game speed across 60Hz, 120Hz, and 144Hz displays.
+* **Live AI Tutorial Demos:** Selecting a game immediately mounts a full-screen, 60fps AI simulation behind an instructional overlay so players see mechanics demonstrated in real time prior to match start.
+* **Viewport-Aware Canvas Optimization:** Hub preview cards only execute render loops when visible within the viewport using an `IntersectionObserver`, preventing CPU and GPU context thrashing.
+* **Memory & Canvas Sanitization:** Automatic lifecycle tracking disposes of P5.js instances and Matter.js worlds on teardown, preventing memory leaks during long gaming sessions.
+* **Session Persistence:** Mobile players can lock their screens or refresh their browsers and automatically reconnect to their existing player slot without losing points.
+
+---
+
+## Technical Architecture
+
+The engine is built on an event-driven Manager Pattern using vanilla ES6 JavaScript, P5.js for canvas rendering, and Matter.js for 2D rigid-body dynamics.
+
+| Core Component | Primary Responsibility |
+| :--- | :--- |
+| **`GameRunner.js`** | Manages the active game container lifecycle. Tracks instances using an internal container map (`mountedInstances`), ensuring previous P5 sketches and physics worlds are destroyed before mounting new sessions. |
+| **`BaseGame.js`** | The abstract parent class for all minigames. Houses the 60Hz fixed accumulator, viewport scaling (`1920x1200`), procedural avatar rendering, particle systems, HUD timer badges, directional indicators, and spatial layout helpers. |
+| **`NetworkManager.js`** | Coordinates WebRTC peer connections via PeerJS. Manages the heartbeat loop, RTT calculation, state broadcasts, and zombie player pruning (45-second timeout). |
+| **`InputManager.js`** | Normalizes keyboard events and WebRTC data packets into a unified stream, applying network lag compensation to local inputs. |
+| **`AvatarSystem.js`** | Procedural vector avatar generation. Handles accessories, facial expressions, variant styling, and dynamic procedural animations (Run, Jump, Attack, Win, Lose, Dizzy). |
+| **`TournamentManager.js`** | Manages multi-round tournament playlists, automated scoring, cumulative standings tables, and final podium sequences. |
+| **`UIManager.js`** | Controls DOM-based overlays, tutorial cards, modal dialogs, confetti particle simulations, and scoreboard updates. |
+| **`AudioManager.js`** | Pure Web Audio API synthesis engine. Synthesizes procedural multi-track arcade music, lofi lobby themes, and dynamic sound effects with zero audio asset downloads. |
+
+### Tech Stack
+* **Rendering & Canvas:** [p5.js](https://p5js.org/) (LGPL-2.1)
+* **2D Physics:** [Matter.js](https://brm.io/matter-js/) (MIT)
+* **WebRTC Networking:** [PeerJS](https://peerjs.com/) (MIT)
+* **QR Code Generation:** [QRCode.js](https://davidshimjs.github.io/qrcodejs/) (MIT)
+
+---
+
+## Lifecycle and Simulation Pipeline
+
+Each minigame extends `BaseGame` and adheres to a standardized lifecycle that isolates simulation from display rendering:
+
+```
+[mount()] -> onSetup() -> onRoundStart() -> [Fixed Loop: onFixedUpdate(dt)] -> [Frame Loop: onDraw()] -> onDestroy()
+```
+
 1. **`onSetup()`**: Invoked once when the game class is mounted. Configures win conditions, arena boundaries, and rigid bodies.
 2. **`onRoundStart()`**: Invoked at the beginning of each round to position entities, reset player states, and schedule timers.
 3. **`onFixedUpdate(dt)`**: Invoked at a constant 60 ticks per second (16.67ms delta). All body forces, velocity integrations, AI bot logic, collision processing, and timer deductions occur here.
@@ -87,3 +149,15 @@ export default class ExampleGame extends BaseGame {
         // Handle 'PRESS', 'RELEASE', or 'VECTOR'
     }
 }
+```
+
+Add the class to `REGISTERED_GAMES` in `src/GameRegistry.js`. The engine will automatically generate its Hub card, route its controller type, handle live demo tutorials, and incorporate it into Tournament drafts.
+
+---
+
+## License & Credits
+
+This project source code is **Proprietary**.  
+Copyright (c) 2025 Caden Gamache. All Rights Reserved.
+
+See `CREDITS.md` for full open-source license attributions for P5.js, Matter.js, PeerJS, and QRCode.js.
