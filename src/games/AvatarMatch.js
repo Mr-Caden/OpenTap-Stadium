@@ -9,7 +9,7 @@ export default class AvatarMatch extends BaseGame {
             id: "avatar-match",
             title: "Avatar Match",
             description: "Find the matching faces!",
-            tutorial: "Find the matching pairs!",
+            tutorial: "Take turns flipping cards to find matching pairs!",
             controllerType: "TOUCHPAD",
             tournamentRules: {
                 winValue: 1,
@@ -63,9 +63,10 @@ export default class AvatarMatch extends BaseGame {
             this.drawCard(this.cards[i]);
         }
 
+        // Shared local mouse support on host display
         if (this.mode !== "demo" && p.mouseIsPressed) {
             const activeP = this.players[this.state.activePlayerIndex];
-            if (activeP.type === "local") {
+            if (activeP && activeP.type === "local") {
                 const vx = (p.mouseX - this.transX) / this.scaleFactor;
                 const vy = (p.mouseY - this.transY) / this.scaleFactor;
                 this.handleInputClick(vx, vy);
@@ -81,7 +82,7 @@ export default class AvatarMatch extends BaseGame {
             const c = this.cards[i];
             if (c.isMatched || c.isFlipped) continue;
 
-            const half = this.CARD_SIZE / 2 + 10;
+            const half = this.CARD_SIZE / 2 + 6;
 
             if (
                 vx > c.x - half &&
@@ -112,8 +113,9 @@ export default class AvatarMatch extends BaseGame {
             if (card.scaleX >= 1) {
                 card.scaleX = 1;
                 card.flipState = "idle";
-                if (this.flippedCards.length === 2 && card.isFlipped)
+                if (this.flippedCards.length === 2 && card.isFlipped) {
                     this.checkMatch();
+                }
             }
         }
 
@@ -121,31 +123,32 @@ export default class AvatarMatch extends BaseGame {
         p.noStroke();
         p.fill(0, 30);
         p.rectMode(p.CENTER);
-        p.rect(6, 6, this.CARD_SIZE, this.CARD_SIZE, 16);
+        p.rect(5, 5, this.CARD_SIZE, this.CARD_SIZE, 14);
 
         if (!card.isFlipped && !card.isMatched) {
-            p.fill("#fff");
-            p.rect(0, 0, this.CARD_SIZE, this.CARD_SIZE, 16);
-            p.fill("#f0f0f0");
-            p.circle(0, 0, 90);
-            p.fill("#ccc");
-            p.textSize(70);
+            p.fill("#ffffff");
+            p.rect(0, 0, this.CARD_SIZE, this.CARD_SIZE, 14);
+            p.fill("#f3ece1");
+            p.circle(0, 0, this.CARD_SIZE * 0.62);
+            p.fill("#c4bcb1");
+            p.textSize(this.CARD_SIZE * 0.44);
             p.textAlign(p.CENTER, p.CENTER);
             p.textStyle(p.BOLD);
-            p.text("?", 0, 6);
+            p.text("?", 0, 4);
         } else {
             if (card.isMatched) {
-                p.fill(card.matchOwner || "#fff");
+                p.fill(card.matchOwner || "#ffffff");
                 p.stroke(255);
-                p.strokeWeight(6);
+                p.strokeWeight(5);
             } else {
-                p.fill("#fff");
-                p.noStroke();
+                p.fill("#ffffff");
+                p.stroke("#e8e1d5");
+                p.strokeWeight(3);
             }
-            p.rect(0, 0, this.CARD_SIZE, this.CARD_SIZE, 16);
+            p.rect(0, 0, this.CARD_SIZE, this.CARD_SIZE, 14);
 
-            this.drawAvatar(card.data, 0, 15, {
-                size: 90,
+            this.drawAvatar(card.data, 0, 10, {
+                size: this.CARD_SIZE * 0.62,
                 expression: card.isMatched ? "happy" : "idle",
             });
         }
@@ -154,9 +157,33 @@ export default class AvatarMatch extends BaseGame {
 
     generateBoard() {
         const pCount = this.players.length;
-        if (pCount <= 2) this.totalPairs = 12;
-        else if (pCount === 3) this.totalPairs = 15;
-        else this.totalPairs = 18;
+        let cols, rows;
+
+        // Gap-free grid geometry tailored to exact player tiers
+        if (pCount <= 2) {
+            cols = 5;
+            rows = 4; // 20 cards = 10 pairs (5x4 full grid)
+            this.CARD_SIZE = 160;
+            this.GAP = 22;
+        } else if (pCount <= 4) {
+            cols = 6;
+            rows = 5; // 30 cards = 15 pairs (6x5 full grid)
+            this.CARD_SIZE = 145;
+            this.GAP = 18;
+        } else if (pCount <= 6) {
+            cols = 6;
+            rows = 6; // 36 cards = 18 pairs (6x6 full grid)
+            this.CARD_SIZE = 135;
+            this.GAP = 16;
+        } else {
+            cols = 8;
+            rows = 6; // 48 cards = 24 pairs (8x6 full grid)
+            this.CARD_SIZE = 125;
+            this.GAP = 14;
+        }
+
+        this.totalPairs = (cols * rows) / 2;
+
         const pairs = [];
         const usedConfigs = new Set();
         for (let i = 0; i < this.totalPairs; i++) {
@@ -168,17 +195,19 @@ export default class AvatarMatch extends BaseGame {
                 hash = `${config.color}-${config.accessory}-${config.variant}`;
                 attempts++;
             } while (usedConfigs.has(hash) && attempts < 200);
+
             usedConfigs.add(hash);
             pairs.push({ ...config });
             pairs.push({ ...config });
         }
+
         this.shuffle(pairs);
-        const cols = 6;
-        const rows = Math.ceil(pairs.length / cols);
+
         const totalW = cols * this.CARD_SIZE + (cols - 1) * this.GAP;
         const totalH = rows * this.CARD_SIZE + (rows - 1) * this.GAP;
         const startX = (this.V_WIDTH - totalW) / 2 + this.CARD_SIZE / 2;
         const startY = (this.V_HEIGHT - totalH) / 2 + this.CARD_SIZE / 2;
+
         let idx = 0;
         for (let y = 0; y < rows; y++) {
             for (let x = 0; x < cols; x++) {
@@ -206,7 +235,9 @@ export default class AvatarMatch extends BaseGame {
             "#6BCB77",
             "#A66CFF",
             "#FF9F43",
-            "#54a0ff",
+            "#54A0FF",
+            "#1ABC9C",
+            "#E84393"
         ];
         const accs = AvatarSystem.ACCESSORIES;
         return {
@@ -262,6 +293,7 @@ export default class AvatarMatch extends BaseGame {
             [array[i], array[j]] = [array[j], array[i]];
         }
     }
+
     runDemoAI() {
         if (this.p.frameCount % 60 === 0 && this.flippedCards.length < 2) {
             const available = this.cards.filter(

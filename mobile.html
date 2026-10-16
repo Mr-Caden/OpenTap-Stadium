@@ -485,6 +485,12 @@
                 width: 100% !important;
                 height: 100% !important;
                 display: block;
+                animation: canvasFadeIn 0.2s ease-out;
+            }
+
+            @keyframes canvasFadeIn {
+                from { opacity: 0; }
+                to { opacity: 1; }
             }
 
             .mobile-card-info {
@@ -541,7 +547,7 @@
                 background: var(--accent-hover);
             }
 
-            /* MENU OVERLAY */
+            /* MENU OVERLAY & IN-GAME SETTINGS */
             #overlay-menu {
                 position: fixed;
                 top: 0;
@@ -562,13 +568,64 @@
                 font-size: 1.5rem;
                 font-weight: 900;
                 letter-spacing: 1px;
-                margin-bottom: 10px;
+                margin-bottom: 6px;
+            }
+
+            .menu-sens-container {
+                width: 80%;
+                max-width: 360px;
+                background: rgba(255, 255, 255, 0.08);
+                border: 1px solid rgba(255, 255, 255, 0.18);
+                border-radius: 18px;
+                padding: 14px 20px;
+                box-sizing: border-box;
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+            }
+
+            .menu-sens-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                font-size: 0.85rem;
+                font-weight: 800;
+                color: #fdfcf7;
+                letter-spacing: 0.5px;
+            }
+
+            .menu-sens-val {
+                font-size: 1rem;
+                font-weight: 900;
+                color: var(--accent-coral);
+            }
+
+            .menu-sens-slider {
+                -webkit-appearance: none;
+                appearance: none;
+                width: 100%;
+                height: 10px;
+                border-radius: 5px;
+                background: rgba(255, 255, 255, 0.22);
+                outline: none;
+                margin: 4px 0;
+            }
+
+            .menu-sens-slider::-webkit-slider-thumb {
+                -webkit-appearance: none;
+                width: 26px;
+                height: 26px;
+                background: var(--accent-coral);
+                border: 2px solid white;
+                border-radius: 50%;
+                cursor: pointer;
             }
 
             .menu-option {
                 background: white;
                 border: none;
                 width: 80%;
+                max-width: 360px;
                 padding: 18px;
                 font-size: 1.15rem;
                 font-weight: bold;
@@ -705,7 +762,7 @@
             </div>
         </div>
 
-        <!-- LOBBY (Vertically Centered) -->
+        <!-- LOBBY (Clean Player Customization Card) -->
         <div id="screen-lobby" class="screen">
             <div class="lobby-content-wrapper">
                 <div class="player-card">
@@ -756,7 +813,7 @@
             </div>
         </div>
 
-        <!-- DEDICATED READY-UP SCREEN -->
+        <!-- DEDICATED PHONE READY-UP SCREEN -->
         <div id="screen-ready" class="screen">
             <div class="ready-badge-header">STADIUM TUTORIAL</div>
             <div id="ready-avatar-target"></div>
@@ -884,12 +941,31 @@
             <div id="mobile-gallery-scroll"></div>
         </div>
 
-        <!-- MENU OVERLAY -->
+        <!-- MENU OVERLAY & IN-GAME SETTINGS -->
         <div id="overlay-menu" class="hidden">
             <button class="close-menu-btn" onclick="toggleMenu()">
                 &times;
             </button>
-            <div class="menu-header">GAME MENU</div>
+            <div class="menu-header">GAME SETTINGS</div>
+
+            <!-- In-Game Pointer Speed Setting -->
+            <div class="menu-sens-container">
+                <div class="menu-sens-header">
+                    <span>POINTER SPEED</span>
+                    <span id="sens-label" class="menu-sens-val">1.4x</span>
+                </div>
+                <input
+                    type="range"
+                    id="p-sens"
+                    class="menu-sens-slider"
+                    min="0.8"
+                    max="2.5"
+                    step="0.1"
+                    value="1.4"
+                    oninput="updateSensitivity(this.value)"
+                />
+            </div>
+
             <button
                 id="btn-next-round"
                 class="menu-option primary hidden"
@@ -924,6 +1000,7 @@
                 name: "Guest",
                 accessory: "Bear Ears",
                 variant: "default",
+                sensitivity: parseFloat(localStorage.getItem("wa_sens")) || 1.4,
             };
             let p5Lobby, p5Btn, p5Touch, p5Ready;
             let currentContext = "IDLE";
@@ -933,6 +1010,7 @@
             let wakeLock = null;
             const accessories = AvatarSystem.ACCESSORIES;
 
+            // Virtualized Gallery Instances
             let galleryP5Instances = new Map();
             let galleryObserver = null;
 
@@ -946,11 +1024,8 @@
                 try {
                     if ("wakeLock" in navigator) {
                         wakeLock = await navigator.wakeLock.request("screen");
-                        console.log("[Controller] Wake Lock active");
                     }
-                } catch (err) {
-                    console.log("[Controller] Wake Lock Error:", err);
-                }
+                } catch (err) {}
             }
 
             window.connect = () => {
@@ -972,7 +1047,6 @@
                 });
 
                 peer.on("error", (err) => {
-                    console.error(err);
                     if (err.type === "peer-unavailable") {
                         showDisconnectScreen(
                             "Room Not Found",
@@ -1064,9 +1138,9 @@
             function handleData(data) {
                 lastPacketTime = Date.now();
 
-                if (data.type === "WHO_ARE_YOU")
+                if (data.type === "WHO_ARE_YOU") {
                     conn.send({ type: "HELLO", uuid: myUUID });
-                else if (data.type === "INIT") {
+                } else if (data.type === "INIT") {
                     player = { ...player, ...data };
                     showScreen("screen-lobby");
                     initP5Lobby();
@@ -1075,15 +1149,22 @@
                         .getElementById("global-menu-btn")
                         .classList.remove("hidden");
                     doVibrate(50);
-                } else if (data.type === "PING")
+
+                    // Sync initial sensitivity preference to host
+                    if (player.sensitivity) {
+                        conn.send({
+                            type: "UPDATE_PROFILE",
+                            payload: { sensitivity: player.sensitivity },
+                        });
+                    }
+                } else if (data.type === "PING") {
                     conn.send({ type: "PONG", ts: data.ts });
-                else if (data.type === "VIBRATE")
+                } else if (data.type === "VIBRATE") {
                     doVibrate(data.duration || 200);
-                else if (data.type === "STATE_CHANGE") {
+                } else if (data.type === "STATE_CHANGE") {
                     if (data.player) player = { ...player, ...data.player };
                     currentContext = data.context || "IDLE";
 
-                    // Manage dedicated Select Game button: only visible during lobby
                     const selectGameBtn =
                         document.getElementById("btn-lobby-gallery");
                     if (selectGameBtn) {
@@ -1098,7 +1179,6 @@
                     }
 
                     if (currentContext === "TUTORIAL") {
-                        // Enter dedicated Ready-Up View during tutorials
                         closeMobileGallery();
                         showScreen("screen-ready");
                         initP5Ready();
@@ -1124,23 +1204,45 @@
                 document.getElementById("btn-acc").innerText = player.accessory;
                 document.getElementById("btn-style").innerText =
                     player.variant === "default" ? "Boy" : "Girl";
+
+                const sens = player.sensitivity || 1.4;
+                const sensInput = document.getElementById("p-sens");
+                const sensLabel = document.getElementById("sens-label");
+                if (sensInput) sensInput.value = sens;
+                if (sensLabel) sensLabel.innerText = `${sens.toFixed(1)}x`;
             }
 
             window.sendUpdate = () => {
                 player.name = document.getElementById("p-name").value;
-                if (conn)
+                if (conn) {
                     conn.send({
                         type: "UPDATE_PROFILE",
                         payload: { name: player.name },
                     });
+                }
             };
+
             window.updateColor = (val) => {
                 player.color = hslToHex(val, 70, 50);
-                if (conn)
+                if (conn) {
                     conn.send({
                         type: "UPDATE_PROFILE",
                         payload: { color: player.color },
                     });
+                }
+            };
+
+            window.updateSensitivity = (val) => {
+                player.sensitivity = parseFloat(val);
+                localStorage.setItem("wa_sens", player.sensitivity);
+                const label = document.getElementById("sens-label");
+                if (label) label.innerText = `${player.sensitivity.toFixed(1)}x`;
+                if (conn) {
+                    conn.send({
+                        type: "UPDATE_PROFILE",
+                        payload: { sensitivity: player.sensitivity },
+                    });
+                }
             };
 
             window.changeAccessory = () => {
@@ -1148,11 +1250,12 @@
                 player.accessory = accessories[(idx + 1) % accessories.length];
                 updateLobbyUI();
                 doVibrate(10);
-                if (conn)
+                if (conn) {
                     conn.send({
                         type: "UPDATE_PROFILE",
                         payload: { accessory: player.accessory },
                     });
+                }
             };
 
             window.toggleVariant = () => {
@@ -1160,14 +1263,14 @@
                     player.variant === "default" ? "feminine" : "default";
                 updateLobbyUI();
                 doVibrate(10);
-                if (conn)
+                if (conn) {
                     conn.send({
                         type: "UPDATE_PROFILE",
                         payload: { variant: player.variant },
                     });
+                }
             };
 
-            // --- READY-UP INTERACTION ---
             function resetReadyButtonUI() {
                 isPlayerReady = false;
                 const btn = document.getElementById("btn-ready-toggle");
@@ -1178,8 +1281,9 @@
                     btn.style.backgroundColor = player.color;
                 }
                 if (label) label.innerText = "READY UP";
-                if (prompt)
+                if (prompt) {
                     prompt.innerText = "Tap button to confirm readiness";
+                }
             }
 
             window.togglePlayerReady = () => {
@@ -1193,8 +1297,9 @@
 
                 if (btn) btn.classList.add("is-ready");
                 if (label) label.innerText = "READY!";
-                if (prompt)
+                if (prompt) {
                     prompt.innerText = "You are ready! Watch TV for tutorial.";
+                }
 
                 sendInput("PRESS");
                 setTimeout(() => sendInput("RELEASE"), 100);
@@ -1231,7 +1336,7 @@
                 p5Ready = new p5(sketch, "ready-avatar-target");
             }
 
-            // --- MOBILE P5 GAME GALLERY ---
+            // --- VIRTUALIZED LAZY-MOUNTING MOBILE GALLERY ---
             window.openMobileGallery = () => {
                 doVibrate(15);
                 const galleryScreen = document.getElementById(
@@ -1254,10 +1359,8 @@
                     galleryObserver.disconnect();
                     galleryObserver = null;
                 }
-                galleryP5Instances.forEach((inst) => {
-                    if (inst && typeof inst.remove === "function") {
-                        inst.remove();
-                    }
+                galleryP5Instances.forEach((entry, gameId) => {
+                    unmountCardSketch(gameId);
                 });
                 galleryP5Instances.clear();
             }
@@ -1269,13 +1372,12 @@
                 if (!container) return;
                 cleanupGalleryP5();
 
+                // 1. Render lightweight HTML card shells without allocating canvases upfront
                 container.innerHTML = GAME_LIST.map((game) => {
                     const isTouchpad = game.controllerType === "TOUCHPAD";
                     return `
                     <div class="mobile-card-item" data-id="${game.id}">
-                        <div class="mobile-card-canvas-box" id="mcard-${
-                            game.id
-                        }"></div>
+                        <div class="mobile-card-canvas-box" id="mcard-${game.id}"></div>
                         <div class="mobile-card-info">
                             <div class="mobile-card-title-row">
                                 <h3 class="mobile-card-title">${game.title}</h3>
@@ -1294,113 +1396,127 @@
                 `;
                 }).join("");
 
-                // IntersectionObserver to loop ONLY the currently visible card
+                // 2. Set up IntersectionObserver: only instantiate canvases for cards currently in view
                 if ("IntersectionObserver" in window) {
                     galleryObserver = new IntersectionObserver(
                         (entries) => {
                             entries.forEach((entry) => {
                                 const gameId = entry.target.dataset.id;
-                                const inst = galleryP5Instances.get(gameId);
-                                if (!inst) return;
+                                if (!gameId) return;
+
                                 if (entry.isIntersecting) {
-                                    inst.loop();
+                                    mountCardSketch(gameId);
                                 } else {
-                                    inst.noLoop();
+                                    unmountCardSketch(gameId);
                                 }
                             });
                         },
-                        { root: container, threshold: 0.15 }
+                        {
+                            root: container,
+                            rootMargin: "80px 0px 80px 0px",
+                            threshold: 0.05,
+                        }
                     );
+
+                    container.querySelectorAll(".mobile-card-item").forEach((cardEl) => {
+                        galleryObserver.observe(cardEl);
+                    });
                 }
+            }
 
-                // Mount lightweight demo P5 sketches into cards
-                GAME_LIST.forEach((game) => {
-                    const canvasBoxId = `mcard-${game.id}`;
-                    const cardEl = container.querySelector(
-                        `[data-id="${game.id}"]`
-                    );
+            function mountCardSketch(gameId) {
+                if (galleryP5Instances.has(gameId)) return;
 
-                    const sketch = (p) => {
-                        let gameInstance = null;
-                        const demoPlayers = [
-                            {
-                                id: 0,
-                                name: "NPC 1",
-                                color: "#FF6B6B",
-                                variant: "default",
-                                accessory: "Cat Ears",
+                const game = GAME_LIST.find((g) => g.id === gameId);
+                if (!game) return;
+
+                const boxId = `mcard-${gameId}`;
+                const box = document.getElementById(boxId);
+                if (!box) return;
+
+                const sketch = (p) => {
+                    let gameInstance = null;
+                    const demoPlayers = [
+                        {
+                            id: 0,
+                            name: "NPC 1",
+                            color: "#FF6B6B",
+                            variant: "default",
+                            accessory: "Cat Ears",
+                        },
+                        {
+                            id: 1,
+                            name: "NPC 2",
+                            color: "#4D96FF",
+                            variant: "feminine",
+                            accessory: "Bow",
+                        },
+                        {
+                            id: 2,
+                            name: "NPC 3",
+                            color: "#6BCB77",
+                            variant: "default",
+                            accessory: "Headphones",
+                        },
+                    ];
+
+                    p.setup = () => {
+                        const w = box.clientWidth || 300;
+                        const h = box.clientHeight || 180;
+                        p.createCanvas(w, h);
+                        p.pixelDensity(1);
+                        p.frameRate(30);
+
+                        const context = {
+                            p5: p,
+                            players: {
+                                getActivePlayers: () => demoPlayers,
+                                getPlayer: () => null,
                             },
-                            {
-                                id: 1,
-                                name: "NPC 2",
-                                color: "#4D96FF",
-                                variant: "feminine",
-                                accessory: "Bow",
+                            ui: {
+                                updateScoreboard: () => {},
+                                showMessage: () => {},
+                                showTurnMessage: () => {},
+                                hideMessage: () => {},
+                                showPodium: () => {},
+                                showTournamentStandings: () => {},
                             },
-                            {
-                                id: 2,
-                                name: "NPC 3",
-                                color: "#6BCB77",
-                                variant: "default",
-                                accessory: "Headphones",
-                            },
-                        ];
-
-                        p.setup = () => {
-                            const box = document.getElementById(canvasBoxId);
-                            p.createCanvas(
-                                box.clientWidth || 300,
-                                box.clientHeight || 180
-                            );
-                            p.pixelDensity(1);
-                            p.frameRate(30);
-
-                            const context = {
-                                p5: p,
-                                players: {
-                                    getActivePlayers: () => demoPlayers,
-                                    getPlayer: () => null,
-                                },
-                                ui: {
-                                    updateScoreboard: () => {},
-                                    showMessage: () => {},
-                                    showTurnMessage: () => {},
-                                    hideMessage: () => {},
-                                    showPodium: () => {},
-                                    showTournamentStandings: () => {},
-                                },
-                                audio: null,
-                            };
-
-                            try {
-                                gameInstance = new game.class(context, {
-                                    mode: "demo",
-                                });
-                                gameInstance.setup();
-                            } catch (err) {
-                                console.error(
-                                    `Error loading ${game.title} preview:`,
-                                    err
-                                );
-                            }
-
-                            p.noLoop();
+                            audio: null,
                         };
 
-                        p.draw = () => {
-                            if (gameInstance) gameInstance.draw();
-                        };
+                        try {
+                            gameInstance = new game.class(context, {
+                                mode: "demo",
+                            });
+                            gameInstance.setup();
+                        } catch (err) {}
                     };
 
-                    const p5Inst = new p5(sketch, canvasBoxId);
-                    galleryP5Instances.set(game.id, p5Inst);
+                    p.draw = () => {
+                        if (gameInstance) gameInstance.draw();
+                    };
+                };
 
-                    if (galleryObserver && cardEl) {
-                        galleryObserver.observe(cardEl);
-                    } else {
-                        p5Inst.loop();
+                const p5Inst = new p5(sketch, boxId);
+                galleryP5Instances.set(gameId, { p5Inst, game });
+            }
+
+            function unmountCardSketch(gameId) {
+                const entry = galleryP5Instances.get(gameId);
+                if (!entry) return;
+
+                try {
+                    if (entry.p5Inst && typeof entry.p5Inst.remove === "function") {
+                        entry.p5Inst.remove();
                     }
-                });
+                } catch (e) {}
+
+                galleryP5Instances.delete(gameId);
+
+                const box = document.getElementById(`mcard-${gameId}`);
+                if (box) {
+                    box.innerHTML = "";
+                }
             }
 
             window.launchGameFromMobile = (gameId) => {
@@ -1424,26 +1540,36 @@
                         .getElementById("btn-resume")
                         .classList.remove("hidden");
 
-                    if (currentContext === "ROUND_OVER")
+                    if (currentContext === "ROUND_OVER") {
                         document
                             .getElementById("btn-next-round")
                             .classList.remove("hidden");
-                    if (currentContext === "GAME_OVER")
+                    }
+                    if (currentContext === "GAME_OVER") {
                         document
                             .getElementById("btn-play-again")
                             .classList.remove("hidden");
+                    }
+
+                    // Sync current pointer speed slider and badge
+                    const sens = player.sensitivity || 1.4;
+                    const sensInput = document.getElementById("p-sens");
+                    const sensLabel = document.getElementById("sens-label");
+                    if (sensInput) sensInput.value = sens;
+                    if (sensLabel) sensLabel.innerText = `${sens.toFixed(1)}x`;
                 }
                 menu.classList.toggle("hidden");
             };
 
             window.sendCmd = (action, payload = null) => {
                 doVibrate(10);
-                if (conn)
+                if (conn) {
                     conn.send({
                         type: "COMMAND",
                         action: action,
                         payload: payload,
                     });
+                }
                 const menu = document.getElementById("overlay-menu");
                 if (menu && !menu.classList.contains("hidden")) {
                     menu.classList.add("hidden");
@@ -1459,12 +1585,13 @@
 
             const sendInput = (action, payload = null) => {
                 if (action === "PRESS") doVibrate(15);
-                if (conn)
+                if (conn) {
                     conn.send({
                         type: "INPUT",
                         action: action,
                         payload: payload,
                     });
+                }
             };
 
             const btn = document.getElementById("btn-big");

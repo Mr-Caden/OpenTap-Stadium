@@ -18,9 +18,12 @@ export default class CodeBreaker extends BaseGame {
     }
 
     onSetup() {
-        this.config.winCondition = "SCORE";
-        this.config.winValue = 5;
-        this.config.roundEndCriteria = "NONE";
+        const count = this.players.length;
+
+        this.config.winCondition = 'SCORE';
+        // Scaled win threshold keeps multi-player deduction rounds punchy
+        this.config.winValue = count >= 7 ? 2 : (count >= 4 ? 3 : 5);
+        this.config.roundEndCriteria = 'NONE';
         this.config.livesPerRound = 1;
         this.config.eliminateOnDeath = false;
         this.config.showRoundResultUI = false;
@@ -28,7 +31,7 @@ export default class CodeBreaker extends BaseGame {
         this.secretNumber = 0;
         this.playerStates = [];
         this.activeJudges = [];
-        this.gameState = "GUESSING";
+        this.gameState = 'GUESSING';
         this.wasPerfectWin = false;
         this.needNewSecret = true;
     }

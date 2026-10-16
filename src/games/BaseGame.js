@@ -2,12 +2,24 @@
 
 import AvatarSystem from '../core/AvatarSystem.js';
 
+/**
+ * BaseGame
+ * Abstract base class providing fixed-timestep simulation, managed physics,
+ * unified input normalization, entity lifecycle management, rotate-tap movement engine,
+ * and shared vector rendering.
+ */
 export default class BaseGame {
     constructor(context, rules = {}) {
         this.p = context.p5;
         this.audio = context.audio;
         this.ui = context.ui;
         this.context = context;
+
+        // Guaranteed baseline coordinate space (1920x1200 virtual viewport)
+        this.V_WIDTH = 1920;
+        this.V_HEIGHT = 1200;
+        this.CX = this.V_WIDTH / 2;
+        this.CY = this.V_HEIGHT / 2;
 
         this.allPlayers = context.players.getActivePlayers();
         
@@ -33,13 +45,27 @@ export default class BaseGame {
             ...rules
         };
 
-        this.CURSOR_SPEED = 6; 
+        // Responsive cursor speed: 15px/tick base speed allows swift arena navigation
+        this.CURSOR_SPEED = 15; 
 
         // Centralized procedural avatar system
         this.avatars = new AvatarSystem(this.p);
 
-        // Centralized particle system
+        // Particle pool
         this.particles = [];
+
+        // Managed timeouts set
+        this.activeTimeouts = new Set();
+
+        // Managed physics state
+        this.physicsEnabled = false;
+        this.engine = null;
+        this.world = null;
+        this.physicsEventHandlers = [];
+
+        // Engine-level Rotate-Tap Movement System
+        this.rotateTapEnabled = false;
+        this.rotateTapConfig = null;
 
         // Fixed timestep accumulator settings (60Hz deterministic simulation)
         this.FIXED_DELTA_TIME = 1000 / 60;
@@ -47,6 +73,7 @@ export default class BaseGame {
         this.physicsAccumulator = 0;
         this.lastFrameTime = 0;
 
+        // Core player records
         this.players = this.allPlayers.map(p => ({ 
             ...p, 
             score: 0, 
@@ -54,12 +81,16 @@ export default class BaseGame {
             isEliminated: false,
             isPermEliminated: false,
             wasPressed: false,
-            cursorX: this.V_WIDTH / 2,
-            cursorY: this.V_HEIGHT / 2,
+            cursorX: this.CX,
+            cursorY: this.CY,
             isClicking: false,
             clickSafetyTimer: 0, 
-            inputVector: { x: 0, y: 0 }
+            inputVector: { x: 0, y: 0 },
+            sensitivity: p.sensitivity || 1.4
         }));
+
+        // Standardized entity pool for gameplay entities (synced to active players)
+        this.entities = [];
 
         this.state = {
             phase: 'SETUP',
@@ -70,10 +101,6 @@ export default class BaseGame {
             timer: 0 
         };
 
-        this.V_WIDTH = 1920;
-        this.V_HEIGHT = 1200;
-        this.CX = this.V_WIDTH / 2;
-        this.CY = this.V_HEIGHT / 2;
         this.scaleFactor = 1;
         this.transX = 0;
         this.transY = 0;
@@ -86,6 +113,220 @@ export default class BaseGame {
         this.isDestroyed = false;
         this.isFirstBoot = true; 
     }
+
+    // --- MANAGED PHYSICS LIFECYCLE ---
+
+    /**
+     * Initializes a managed Matter.js physics engine with automatic collision
+     * event delegation and cleanup.
+     * @param {Object} options Physics configuration options
+     */
+    enablePhysics(options = {}) {
+        if (!window.Matter) {
+            console.error('[BaseGame] Matter.js is not loaded.');
+            return;
+        }
+
+        const { Engine, Events } = window.Matter;
+        this.physicsEnabled = true;
+
+        const engineOpts = options.engineOptions || {};
+        this.engine = Engine.create(engineOpts);
+        this.world = this.engine.world;
+
+        const grav = options.gravity || { x: 0, y: 0 };
+        this.engine.gravity.x = grav.x;
+        this.engine.gravity.y = grav.y;
+
+        if (options.positionIterations) {
+            this.engine.positionIterations = options.positionIterations;
+        }
+        if (options.velocityIterations) {
+            this.engine.velocityIterations = options.velocityIterations;
+        }
+
+        const collisionStartHandler = (e) => this._routeCollisions('collisionStart', e);
+        const collisionEndHandler = (e) => this._routeCollisions('collisionEnd', e);
+
+        Events.on(this.engine, 'collisionStart', collisionStartHandler);
+        Events.on(this.engine, 'collisionEnd', collisionEndHandler);
+
+        this.physicsEventHandlers.push(
+            { name: 'collisionStart', handler: collisionStartHandler },
+            { name: 'collisionEnd', handler: collisionEndHandler }
+        );
+    }
+
+    _routeCollisions(type, event) {
+        if (this.isDestroyed || !event.pairs) return;
+
+        for (let i = 0; i < event.pairs.length; i++) {
+            const pair = event.pairs[i];
+            const entityA = this.getEntityByBody(pair.bodyA);
+            const entityB = this.getEntityByBody(pair.bodyB);
+
+            if (type === 'collisionStart') {
+                this.onCollisionStart(pair, pair.bodyA, pair.bodyB, entityA, entityB);
+            } else if (type === 'collisionEnd') {
+                this.onCollisionEnd(pair, pair.bodyA, pair.bodyB, entityA, entityB);
+            }
+        }
+    }
+
+    addPhysicsBody(body) {
+        if (this.world && window.Matter) {
+            window.Matter.Composite.add(this.world, body);
+        }
+        return body;
+    }
+
+    removePhysicsBody(body) {
+        if (this.world && window.Matter && body) {
+            window.Matter.Composite.remove(this.world, body);
+        }
+    }
+
+    getEntityByBody(body) {
+        if (!body) return null;
+        return this.entities.find(e => e.body === body) || null;
+    }
+
+    // --- ENGINE-LEVEL ROTATE-TAP MOVEMENT SYSTEM ---
+
+    /**
+     * Enables automatic rotate-tap steering across all active entities.
+     * Rotates continuously in one direction; holding button engages forward thrust.
+     * @param {Object} options Configuration parameters
+     */
+    enableRotateTapMovement(options = {}) {
+        this.rotateTapEnabled = true;
+        this.rotateTapConfig = {
+            rotSpeed: options.rotSpeed || 0.08,
+            boostForce: options.boostForce || 0.055,
+            friction: options.friction || 0.04,
+            reverseOnTap: options.reverseOnTap === true, // Default: false (constant one-direction rotation)
+            ...options
+        };
+    }
+
+    updateRotateTapMovement(dt) {
+        const activeEntities = this.getActiveEntities();
+
+        for (let i = 0; i < activeEntities.length; i++) {
+            const ent = activeEntities[i];
+
+            if (ent.isBoosting) {
+                const forceMag = ent.boostForce || this.rotateTapConfig.boostForce;
+                const fx = Math.cos(ent.angle) * forceMag;
+                const fy = Math.sin(ent.angle) * forceMag;
+
+                if (ent.body && window.Matter) {
+                    window.Matter.Body.applyForce(ent.body, ent.body.position, { x: fx, y: fy });
+                } else {
+                    ent.vx = (ent.vx || 0) + fx * 15;
+                    ent.vy = (ent.vy || 0) + fy * 15;
+                }
+
+                ent.anim = 'RUN';
+            } else {
+                const speed = ent.rotSpeed || this.rotateTapConfig.rotSpeed;
+                ent.angle += speed * (ent.rotDir || 1);
+                if (ent.anim === 'RUN') ent.anim = 'IDLE';
+            }
+
+            // Kinematic integration for entities without rigid bodies
+            if (!ent.body) {
+                const friction = this.rotateTapConfig.friction || 0.04;
+                ent.vx = (ent.vx || 0) * (1 - friction);
+                ent.vy = (ent.vy || 0) * (1 - friction);
+                ent.x += ent.vx;
+                ent.y += ent.vy;
+            }
+        }
+    }
+
+    drawRotateTapArrows(options = {}) {
+        const activeEntities = this.getActiveEntities();
+        for (let i = 0; i < activeEntities.length; i++) {
+            const ent = activeEntities[i];
+            this.drawDirectionArrow(ent.x, ent.y, ent.angle, {
+                distance: options.distance || (ent.size / 2 + 28),
+                size: options.size || 10,
+                color: ent.player.color,
+                strokeColor: '#FFFFFF',
+                strokeWeight: 2,
+                ...options
+            });
+        }
+    }
+
+    // --- TIMEOUT MANAGEMENT ---
+
+    scheduleTimeout(callback, delayMs) {
+        if (this.isDestroyed) return null;
+        const timerId = setTimeout(() => {
+            this.activeTimeouts.delete(timerId);
+            if (!this.isDestroyed) {
+                callback();
+            }
+        }, delayMs);
+        this.activeTimeouts.add(timerId);
+        return timerId;
+    }
+
+    clearAllTimeouts() {
+        this.activeTimeouts.forEach(id => clearTimeout(id));
+        this.activeTimeouts.clear();
+    }
+
+    // --- ENTITY MANAGEMENT ---
+
+    /**
+     * Rebuilds the entity roster for all active players at the start of a round.
+     */
+    initEntities() {
+        this.entities = [];
+        const activePlayers = this.players.filter(p => !p.isPermEliminated);
+
+        activePlayers.forEach((player, index) => {
+            const entity = {
+                id: player.id,
+                index: index,
+                player: player,
+                x: this.CX,
+                y: this.CY,
+                vx: 0,
+                vy: 0,
+                angle: 0,
+                rotDir: 1, // Constantly rotates clockwise
+                rotSpeed: this.rotateTapConfig ? this.rotateTapConfig.rotSpeed : 0.08,
+                boostForce: this.rotateTapConfig ? this.rotateTapConfig.boostForce : 0.055,
+                isBoosting: false,
+                size: 90,
+                anim: 'IDLE',
+                expression: 'idle',
+                facing: 1, // Stays facing forward/upwards
+                isPressing: false,
+                inputVector: { x: 0, y: 0 },
+                body: null,
+                data: {}
+            };
+
+            this.initPlayerEntity(entity, player);
+            this.entities.push(entity);
+        });
+    }
+
+    getEntity(playerOrId) {
+        const id = typeof playerOrId === 'object' ? playerOrId.id : playerOrId;
+        return this.entities.find(e => e.id === id) || null;
+    }
+
+    getActiveEntities() {
+        return this.entities.filter(e => !e.player.isEliminated && !e.player.isPermEliminated);
+    }
+
+    // --- SETUP & GAME LOOP ---
 
     setup() {
         if (this.isDestroyed) return;
@@ -100,6 +341,10 @@ export default class BaseGame {
         this.physicsAccumulator = 0;
         this.lastFrameTime = 0;
         
+        // Execute minigame setup first so dynamic player scaling rules apply immediately
+        this.onSetup();
+
+        // Apply calibrated configuration to player structures
         this.players.forEach(p => {
             p.score = 0;
             p.isEliminated = false;
@@ -114,9 +359,7 @@ export default class BaseGame {
 
         if (this.audio && this.mode !== 'demo') this.audio.setTrack('game');
 
-        this.onSetup(); 
         this.updateUI(); 
-
         this.startNewRound();
     }
 
@@ -141,12 +384,10 @@ export default class BaseGame {
         let frameDelta = now - this.lastFrameTime;
         this.lastFrameTime = now;
 
-        // Spiral-of-death prevention when tab is backgrounded
         if (frameDelta > this.MAX_ACCUMULATED_TIME) {
             frameDelta = this.MAX_ACCUMULATED_TIME;
         }
 
-        // Countdown timer in real time
         if (this.state.phase === 'PLAYING' && this.config.winCondition === 'TIME') {
             this.state.timer -= frameDelta;
             if (this.state.timer <= 0) {
@@ -155,19 +396,20 @@ export default class BaseGame {
             }
         }
 
-        // Fixed timestep simulation loop (exact 60Hz steps)
         this.physicsAccumulator += frameDelta;
         while (this.physicsAccumulator >= this.FIXED_DELTA_TIME) {
             this.fixedUpdate(this.FIXED_DELTA_TIME);
             this.physicsAccumulator -= this.FIXED_DELTA_TIME;
         }
 
-        // Touchpad cursor updates
+        // Touchpad cursor handling factoring in player sensitivity
         this.players.forEach(pl => {
             if (this.config.controllerType === 'TOUCHPAD') {
                 if (pl.inputVector.x !== 0 || pl.inputVector.y !== 0) {
-                    pl.cursorX += pl.inputVector.x * this.CURSOR_SPEED;
-                    pl.cursorY += pl.inputVector.y * this.CURSOR_SPEED;
+                    const sens = pl.sensitivity || 1.4;
+                    const moveSpeed = this.CURSOR_SPEED * sens;
+                    pl.cursorX += pl.inputVector.x * moveSpeed;
+                    pl.cursorY += pl.inputVector.y * moveSpeed;
                     pl.cursorX = Math.max(0, Math.min(this.V_WIDTH, pl.cursorX));
                     pl.cursorY = Math.max(0, Math.min(this.V_HEIGHT, pl.cursorY));
                 }
@@ -183,7 +425,6 @@ export default class BaseGame {
             }
         });
 
-        // Background color interpolation
         if (this.config.turnBasedBackgroundColor && this.mode !== 'demo') {
             this.bgColor[0] = p.lerp(this.bgColor[0], this.targetBgColor[0], 0.05);
             this.bgColor[1] = p.lerp(this.bgColor[1], this.targetBgColor[1], 0.05);
@@ -204,7 +445,6 @@ export default class BaseGame {
         p.translate(this.transX + sx, this.transY + sy);
         p.scale(this.scaleFactor);
 
-        // Visual frame render
         this.onDraw();
         
         if (this.mode !== 'demo' && this.config.controllerType === 'TOUCHPAD') {
@@ -217,9 +457,23 @@ export default class BaseGame {
     fixedUpdate(dt) {
         if (this.isDestroyed || this.state.phase !== 'PLAYING') return;
 
-        // Step Matter.js physics engine deterministically
+        // Process engine-level rotate-tap steering updates
+        if (this.rotateTapEnabled) {
+            this.updateRotateTapMovement(dt);
+        }
+
+        // Supports both managed physics and legacy manual engine instances
         if (this.engine && window.Matter) {
-            Matter.Engine.update(this.engine, dt);
+            window.Matter.Engine.update(this.engine, dt);
+
+            // Synchronize entity coordinates with rigid bodies if assigned
+            for (let i = 0; i < this.entities.length; i++) {
+                const entity = this.entities[i];
+                if (entity.body) {
+                    entity.x = entity.body.position.x;
+                    entity.y = entity.body.position.y;
+                }
+            }
         }
 
         if (this.mode === 'demo') {
@@ -256,7 +510,7 @@ export default class BaseGame {
 
     drawAvatar(playerData, x, y, options = {}) {
         const p = this.p;
-        const config = playerData.config || playerData;
+        const config = playerData.config || playerData.player || playerData;
         const size = options.size || 90;
         const expression = options.expression || 'idle';
         const anim = options.anim || null;
@@ -286,6 +540,23 @@ export default class BaseGame {
             facing: facing
         });
         p.pop();
+    }
+
+    drawEntities(options = {}) {
+        const activeEntities = this.getActiveEntities();
+        for (let i = 0; i < activeEntities.length; i++) {
+            const ent = activeEntities[i];
+            // Avatars default to staying upright and facing forward/upwards
+            this.drawAvatar(ent.player, ent.x, ent.y, {
+                size: ent.size,
+                anim: ent.anim,
+                expression: ent.expression,
+                facing: options.facing !== undefined ? options.facing : 1,
+                rotation: options.rotation !== undefined ? options.rotation : 0,
+                shadow: options.shadow !== false,
+                ...options
+            });
+        }
     }
 
     drawShadow(x, y, width = 60, height = 20, alpha = 35) {
@@ -506,6 +777,8 @@ export default class BaseGame {
         }
     }
 
+    // --- UNIFIED INPUT PIPELINE ---
+
     handleInput(playerId, type, payload) {
         if (this.isDestroyed || this.state.phase !== 'PLAYING') return;
 
@@ -514,33 +787,62 @@ export default class BaseGame {
         
         if (this.config.turnBased) {
             const activeP = this.players[this.state.activePlayerIndex];
-            if (activeP.id !== playerId) return;
+            if (activeP && activeP.id !== playerId) return;
+        }
+
+        const entity = this.getEntity(playerId);
+
+        // Core Rotate-Tap Input Integration
+        if (this.rotateTapEnabled && entity) {
+            if (type === 'PRESS') {
+                if (this.rotateTapConfig.reverseOnTap) {
+                    entity.rotDir = (entity.rotDir === 1 ? -1 : 1);
+                }
+                entity.isBoosting = true;
+            } else if (type === 'RELEASE') {
+                entity.isBoosting = false;
+            }
         }
 
         if (type === 'VECTOR' && payload) {
             p.inputVector = payload; 
+            if (entity) entity.inputVector = payload;
         }
         else if (type === 'PRESS') {
             p.isClicking = true;
             p.clickSafetyTimer = 0;
+            if (entity) entity.isPressing = true;
         }
         else if (type === 'RELEASE') {
             p.isClicking = false;
+            if (entity) entity.isPressing = false;
         }
 
-        this.onPlayerInput(p, type, payload); 
+        this.onPlayerInput(p, type, payload, entity); 
     }
 
-    simulateInput(playerIndex, action) {
-        const p = this.players[playerIndex];
-        if (p) this.onPlayerInput(p, action);
+    simulateInput(playerIdentifier, action, payload = null) {
+        let targetId = null;
+        if (typeof playerIdentifier === 'number') {
+            const byIdx = this.players[playerIdentifier];
+            targetId = byIdx ? byIdx.id : playerIdentifier;
+        } else if (typeof playerIdentifier === 'object' && playerIdentifier !== null) {
+            targetId = playerIdentifier.id;
+        } else {
+            targetId = playerIdentifier;
+        }
+
+        this.handleInput(targetId, action, payload);
     }
     
     runDemoAI() {}
 
+    // --- ROUND PROGRESSION ---
+
     startNewRound() {
         if (this.isDestroyed) return;
 
+        this.clearAllTimeouts();
         this.state.phase = 'INTRO';
         
         if (this.mode === 'active' || this.mode === 'tournament') {
@@ -563,8 +865,11 @@ export default class BaseGame {
             p.statusType = (this.config.livesPerRound > 1) ? 'hearts' : 'score';
             p.customStatus = (this.config.livesPerRound > 1) ? p.lives : undefined;
             p.isClicking = false;
-            p.inputVector = {x:0, y:0};
+            p.inputVector = { x: 0, y: 0 };
         });
+
+        // Initialize standardized player entity pool
+        this.initEntities();
 
         if (this.config.turnBased) {
             this.validateTurn(true); 
@@ -590,21 +895,17 @@ export default class BaseGame {
             } else {
                 window.dispatchEvent(new CustomEvent('game-state-change', { detail: 'PLAYING' }));
                 const delay = 800;
-                setTimeout(() => {
-                    if (!this.isDestroyed) {
-                        this.state.phase = 'PLAYING';
-                        this.lastFrameTime = this.p.millis();
-                        this.physicsAccumulator = 0;
-                    }
-                }, delay);
-            }
-        } else {
-            setTimeout(() => {
-                if (!this.isDestroyed) {
+                this.scheduleTimeout(() => {
                     this.state.phase = 'PLAYING';
                     this.lastFrameTime = this.p.millis();
                     this.physicsAccumulator = 0;
-                }
+                }, delay);
+            }
+        } else {
+            this.scheduleTimeout(() => {
+                this.state.phase = 'PLAYING';
+                this.lastFrameTime = this.p.millis();
+                this.physicsAccumulator = 0;
             }, 100);
         }
     }
@@ -658,7 +959,7 @@ export default class BaseGame {
                 if (this.config.roundResetType === 'ELIMINATION') {
                     p.isPermEliminated = true;
                     if (this.checkWinCondition()) {
-                        setTimeout(() => this.finishGame(), 1000);
+                        this.scheduleTimeout(() => this.finishGame(), 1000);
                         return;
                     }
                 }
@@ -704,7 +1005,7 @@ export default class BaseGame {
         this.updateUI();
         this.onRoundEnd(); 
 
-        setTimeout(() => {
+        this.scheduleTimeout(() => {
             if (this.isDestroyed) return;
             
             if (this.checkWinCondition()) {
@@ -714,7 +1015,7 @@ export default class BaseGame {
                     const title = roundWinner ? `${roundWinner.name} Wins!` : "Draw";
                     this.ui.showMessage(title, "Next Round", "Next", () => this.startNewRound());
                 } else {
-                    setTimeout(() => this.startNewRound(), 2000);
+                    this.scheduleTimeout(() => this.startNewRound(), 2000);
                 }
             }
         }, 500);
@@ -766,10 +1067,24 @@ export default class BaseGame {
 
     destroy() {
         this.isDestroyed = true;
+        this.clearAllTimeouts();
         this.onDestroy();
-        if (this.world && this.engine && window.Matter) {
-            Matter.World.clear(this.world);
-            Matter.Engine.clear(this.engine);
+
+        // Safely cleans up both managed physics and legacy manual engine instances
+        if (window.Matter && this.engine) {
+            if (this.physicsEventHandlers.length > 0) {
+                this.physicsEventHandlers.forEach(entry => {
+                    window.Matter.Events.off(this.engine, entry.name, entry.handler);
+                });
+                this.physicsEventHandlers = [];
+            }
+
+            if (this.world) {
+                window.Matter.Composite.clear(this.world, false, true);
+            }
+            window.Matter.Engine.clear(this.engine);
+            this.engine = null;
+            this.world = null;
         }
     }
 
@@ -789,13 +1104,17 @@ export default class BaseGame {
     shake(intensity, duration = 20) { this.shakeTimer = duration; }
     playSound(name) { if (this.audio && this.mode !== 'demo') this.audio.play(name); }
 
-    // Lifecycle hooks
+    // --- OVERRIDABLE LIFECYCLE HOOKS ---
+
     onSetup() {}
+    initPlayerEntity(entity, player) {}
     onRoundStart() {}
     onFixedUpdate(dt) {}
     onRoundEnd() {}
     onPlayerEliminated(player) {}
-    onPlayerInput(player, type, payload) {} 
+    onPlayerInput(player, type, payload, entity) {} 
+    onCollisionStart(pair, bodyA, bodyB, entityA, entityB) {}
+    onCollisionEnd(pair, bodyA, bodyB, entityA, entityB) {}
     onDraw() {}
     onDestroy() {}
     getBgColor() { return '#FAF6F0'; }

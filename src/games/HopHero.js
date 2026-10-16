@@ -19,8 +19,10 @@ export default class HopHero extends BaseGame {
     }
 
     onSetup() {
+        const count = this.players.length;
+
         this.config.winCondition = 'ROUNDS'; 
-        this.config.winValue = 3; 
+        this.config.winValue = count >= 7 ? 2 : 3; 
         this.config.livesPerRound = 1; 
         this.config.eliminateOnDeath = true;
         this.config.roundEndCriteria = 'ALL_DEAD'; 
@@ -62,10 +64,15 @@ export default class HopHero extends BaseGame {
         this.generateLevel();
         this.camY = 0;
 
+        const count = this.players.length;
+        // Dynamically compress starting gap so 10 players stay centered within view
+        const spacing = Math.min(100, Math.floor(1200 / Math.max(1, count - 1)));
+        const totalSpan = (count - 1) * spacing;
+
         this.gamePlayers = this.players.map((basePlayer, index) => {
             if (basePlayer.isEliminated) return null;
 
-            const startX = this.CX - ((this.players.length - 1) * 100) / 2 + (index * 100);
+            const startX = this.CX - totalSpan / 2 + (index * spacing);
             
             return {
                 id: basePlayer.id,

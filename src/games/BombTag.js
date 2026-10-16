@@ -9,7 +9,7 @@ export default class BombTag extends BaseGame {
             id: 'bomb-tag',
             title: 'Bomb Tag',
             description: 'Pass the bomb before it blows!',
-            tutorial: 'Run into players to pass the bomb!',
+            tutorial: 'Hold to run forward! Pass the bomb to rivals before it blows!',
             controllerType: 'CONTROLLER',
             tournamentRules: {
                 winValue: 3,
@@ -19,8 +19,10 @@ export default class BombTag extends BaseGame {
     }
 
     onSetup() {
+        const count = this.players.length;
+
         this.config.winCondition = 'SCORE'; 
-        this.config.winValue = 5; 
+        this.config.winValue = count >= 7 ? 3 : 5; 
         this.config.livesPerRound = 1; 
         this.config.eliminateOnDeath = true; 
         this.config.roundEndCriteria = 'NONE'; 
@@ -28,17 +30,24 @@ export default class BombTag extends BaseGame {
         this.ARENA_W = 1400; 
         this.ARENA_H = 900;
         this.PLAYER_SIZE = 90;
-        this.BOOST_FORCE = 0.055; 
-        this.FRICTION = 0.05;
-        this.ROTATION_SPEED = 0.09;
         
-        this.BOMB_DURATION_BASE = 15 * 60; 
+        // Detonation fuse is faster for larger lobbies (10s vs 15s)
+        const seconds = count >= 6 ? 10 : 15;
+        this.BOMB_DURATION_BASE = seconds * 60; 
         this.BOMB_SPEED = 0.022;
 
-        const { Engine, World, Bodies, Composite, Events } = Matter;
-        this.engine = Engine.create();
-        this.world = this.engine.world;
-        this.engine.gravity.y = 0;
+        // Initialize managed physics
+        this.enablePhysics({
+            gravity: { x: 0, y: 0 }
+        });
+
+        // Initialize unified rotate-tap movement (constant unidirectional rotation)
+        this.enableRotateTapMovement({
+            boostForce: 0.055,
+            rotSpeed: 0.09,
+            friction: 0.05,
+            reverseOnTap: false
+        });
 
         this.createWalls();
 
@@ -48,6 +57,7 @@ export default class BombTag extends BaseGame {
         this.neutralTarget = null;
         this.handAnim = 0; 
 
+        const { Bodies } = window.Matter;
         this.bombBody = Bodies.circle(this.CX, this.CY, 35, {
             restitution: 1.1,
             label: 'bomb',
@@ -55,156 +65,93 @@ export default class BombTag extends BaseGame {
             frictionAir: 0.005,
             density: 0.02
         });
-        Composite.add(this.world, this.bombBody);
-
-        Events.on(this.engine, 'collisionStart', (e) => this.handleCollisions(e));
+        this.addPhysicsBody(this.bombBody);
     }
 
     createWalls() {
-        const { Bodies, Composite } = Matter;
-        const wallOpts = { isStatic: true, render: { fillStyle: '#bdc3c7' }, restitution: 1.0 };
+        const { Bodies } = window.Matter;
+        const wallOpts = { isStatic: true, restitution: 1.0, label: 'wall' };
         const thick = 100;
         const cx = this.CX; const cy = this.CY;
         const w = this.ARENA_W; const h = this.ARENA_H;
 
-        const walls = [
-            Bodies.rectangle(cx, cy - h / 2 - thick / 2, w + thick * 2, thick, wallOpts), 
-            Bodies.rectangle(cx, cy + h / 2 + thick / 2, w + thick * 2, thick, wallOpts), 
-            Bodies.rectangle(cx - w / 2 - thick / 2, cy, thick, h, wallOpts), 
-            Bodies.rectangle(cx + w / 2 + thick / 2, cy, thick, h, wallOpts) 
-        ];
-        Composite.add(this.world, walls);
+        this.addPhysicsBody(Bodies.rectangle(cx, cy - h / 2 - thick / 2, w + thick * 2, thick, wallOpts));
+        this.addPhysicsBody(Bodies.rectangle(cx, cy + h / 2 + thick / 2, w + thick * 2, thick, wallOpts));
+        this.addPhysicsBody(Bodies.rectangle(cx - w / 2 - thick / 2, cy, thick, h, wallOpts));
+        this.addPhysicsBody(Bodies.rectangle(cx + w / 2 + thick / 2, cy, thick, h, wallOpts));
+    }
+
+    initPlayerEntity(entity, player) {
+        const count = this.players.filter(p => !p.isPermEliminated).length;
+        const spawnPoints = this.getRadialPositions(count, 420);
+        const spawn = spawnPoints[entity.index] || { x: this.CX, y: this.CY, angle: 0 };
+
+        entity.x = spawn.x;
+        entity.y = spawn.y;
+        entity.angle = Math.atan2(this.CY - spawn.y, this.CX - spawn.x);
+        entity.size = this.PLAYER_SIZE;
+        entity.expression = 'idle';
+        entity.expressionTimer = 0;
+        entity.facing = 1;
+
+        const { Bodies } = window.Matter;
+        const body = Bodies.circle(spawn.x, spawn.y, this.PLAYER_SIZE / 2, {
+            restitution: 0.8,
+            frictionAir: 0.05,
+            label: `player-${entity.id}`,
+            density: 0.005
+        });
+
+        this.addPhysicsBody(body);
+        entity.body = body;
     }
 
     onRoundStart() {
-        this.softReset();
-    }
-
-    softReset() {
         this.bombTimer = this.BOMB_DURATION_BASE;
         this.tagCooldown = 0;
         this.bombHolderId = null;
         this.neutralTarget = null;
 
-        const bodiesToRemove = this.world.bodies.filter(b => b.label.startsWith('player'));
-        Matter.Composite.remove(this.world, bodiesToRemove);
+        if (this.bombBody && window.Matter) {
+            window.Matter.Body.setPosition(this.bombBody, { x: this.CX, y: this.CY });
+            window.Matter.Body.setVelocity(this.bombBody, { x: 0, y: 0 });
+            window.Matter.Body.setAngularVelocity(this.bombBody, 0);
 
-        Matter.Body.setPosition(this.bombBody, { x: this.CX, y: this.CY });
-        Matter.Body.setVelocity(this.bombBody, { x: 0, y: 0 });
-        Matter.Body.setAngularVelocity(this.bombBody, 0);
-        
-        if (!this.world.bodies.includes(this.bombBody)) {
-            Matter.Composite.add(this.world, this.bombBody);
+            if (!this.world.bodies.includes(this.bombBody)) {
+                this.addPhysicsBody(this.bombBody);
+            }
+        }
+    }
+
+    onCollisionStart(pair, bodyA, bodyB, entityA, entityB) {
+        if (this.tagCooldown > 0) return;
+
+        // Player to player bomb pass
+        if (entityA && entityB) {
+            if (entityA.id === this.bombHolderId || entityB.id === this.bombHolderId) {
+                const newHolder = (entityA.id === this.bombHolderId) ? entityB.id : entityA.id;
+                this.bombHolderId = newHolder;
+                this.tagCooldown = 30;
+                this.playSound('bump');
+
+                const midX = (entityA.x + entityB.x) / 2;
+                const midY = (entityA.y + entityB.y) / 2;
+                this.spawnParticles(midX, midY, { color: '#FFFFFF', count: 10, size: 14, speed: 5 });
+            }
         }
 
-        const activePlayers = this.players.filter(p => !p.isEliminated);
-        
-        const spawnPoints = [
-            { x: this.CX - 500, y: this.CY - 300 },
-            { x: this.CX + 500, y: this.CY + 300 },
-            { x: this.CX + 500, y: this.CY - 300 },
-            { x: this.CX - 500, y: this.CY + 300 },
-            { x: this.CX, y: this.CY - 350 },
-            { x: this.CX, y: this.CY + 350 }
-        ];
-
-        this.gamePlayers = activePlayers.map((basePlayer, i) => {
-            const pos = spawnPoints[i % spawnPoints.length];
-            const x = pos.x + this.p.random(-20, 20);
-            const y = pos.y + this.p.random(-20, 20);
-
-            const body = Matter.Bodies.circle(x, y, this.PLAYER_SIZE / 2, {
-                restitution: 0.8, 
-                frictionAir: this.FRICTION, 
-                label: `player-${basePlayer.id}`, 
-                density: 0.005
-            });
-
-            Matter.Composite.add(this.world, body);
-
-            return {
-                id: basePlayer.id,
-                idx: this.players.indexOf(basePlayer),
-                body: body,
-                angle: Math.atan2(this.CY - y, this.CX - x), 
-                expression: 'idle',
-                expressionTimer: 0,
-                isBoosting: false 
-            };
-        });
-    }
-
-    onPlayerInput(player, type) {
-        const gp = this.gamePlayers.find(p => p.id === player.id);
-        if (!gp || this.players[gp.idx].isEliminated) return;
-
-        if (type === 'PRESS') gp.isBoosting = true;
-        if (type === 'RELEASE') gp.isBoosting = false;
-    }
-
-    runDemoAI() {
-        const p = this.p;
-        const activeBots = this.gamePlayers.filter(gp => !this.players[gp.idx].isEliminated);
-
-        activeBots.forEach(bot => {
-            const pos = bot.body.position;
-            let targetPos = null;
-            let mode = 'CHASE';
-
-            const edgeMargin = 150;
-            const nearLeft = pos.x < (this.CX - this.ARENA_W/2 + edgeMargin);
-            const nearRight = pos.x > (this.CX + this.ARENA_W/2 - edgeMargin);
-            const nearTop = pos.y < (this.CY - this.ARENA_H/2 + edgeMargin);
-            const nearBottom = pos.y > (this.CY + this.ARENA_H/2 - edgeMargin);
-
-            if (nearLeft || nearRight || nearTop || nearBottom) {
-                targetPos = { x: this.CX, y: this.CY };
-                mode = 'CHASE';
-            } 
-            else if (this.bombHolderId === null) {
-                targetPos = this.bombBody.position;
-                mode = 'CHASE';
+        // Neutral bomb grab
+        if (this.bombHolderId === null && (bodyA.label === 'bomb' || bodyB.label === 'bomb')) {
+            const playerEnt = entityA || entityB;
+            if (playerEnt) {
+                this.bombHolderId = playerEnt.id;
+                this.playSound('jump');
+                this.removePhysicsBody(this.bombBody);
             }
-            else if (bot.id === this.bombHolderId) {
-                let nearest = null;
-                let minDist = Infinity;
-                activeBots.forEach(other => {
-                    if (other === bot) return;
-                    const d = p.dist(pos.x, pos.y, other.body.position.x, other.body.position.y);
-                    if (d < minDist) { minDist = d; nearest = other; }
-                });
-                if (nearest) targetPos = nearest.body.position;
-                mode = 'CHASE';
-            }
-            else {
-                const holder = activeBots.find(gp => gp.id === this.bombHolderId);
-                if (holder) {
-                    targetPos = holder.body.position;
-                    mode = 'FLEE';
-                }
-            }
-
-            if (!targetPos) return;
-
-            const angleToTarget = Math.atan2(targetPos.y - pos.y, targetPos.x - pos.x);
-            const desiredAngle = mode === 'CHASE' ? angleToTarget : angleToTarget + Math.PI;
-            const diff = Math.atan2(Math.sin(desiredAngle - bot.angle), Math.cos(desiredAngle - bot.angle));
-
-            if (Math.abs(diff) < 0.6) {
-                if (!bot.isBoosting) {
-                    this.simulateInput(bot.idx, 'PRESS');
-                }
-            } else {
-                if (bot.isBoosting) {
-                    this.simulateInput(bot.idx, 'RELEASE');
-                }
-            }
-        });
+        }
     }
 
     onFixedUpdate(dt) {
-        const p = this.p;
-
         if (this.bombHolderId !== null) {
             if (this.bombTimer > 0) {
                 this.bombTimer--;
@@ -219,27 +166,138 @@ export default class BombTag extends BaseGame {
 
         if (this.tagCooldown > 0) this.tagCooldown--;
 
-        this.gamePlayers.forEach(gp => {
-            if (this.players[gp.idx].isEliminated) return;
-
-            if (gp.isBoosting) {
-                const force = p5.Vector.fromAngle(gp.angle).mult(this.BOOST_FORCE);
-                Matter.Body.applyForce(gp.body, gp.body.position, { x: force.x, y: force.y });
-                
-                gp.expression = 'angry';
-                gp.expressionTimer = 10;
-                if (p.frameCount % 5 === 0) {
-                    this.spawnParticles(gp.body.position.x, gp.body.position.y, { color: '#FFFFFF', count: 1, size: 8, speed: 2 });
+        const activeEntities = this.getActiveEntities();
+        activeEntities.forEach(ent => {
+            if (ent.isBoosting) {
+                ent.expression = 'angry';
+                ent.expressionTimer = 10;
+                if (this.p.frameCount % 5 === 0) {
+                    this.spawnParticles(ent.x, ent.y, { color: '#FFFFFF', count: 1, size: 8, speed: 2 });
                 }
-            } else {
-                gp.angle += this.ROTATION_SPEED;
             }
 
-            if (gp.id === this.bombHolderId) {
-                gp.expression = 'stunned';
-            } else if (gp.expressionTimer > 0) {
-                gp.expressionTimer--;
-                if (gp.expressionTimer <= 0) gp.expression = 'idle';
+            if (ent.id === this.bombHolderId) {
+                ent.expression = 'stunned';
+            } else if (ent.expressionTimer > 0) {
+                ent.expressionTimer--;
+                if (ent.expressionTimer <= 0) ent.expression = 'idle';
+            }
+        });
+    }
+
+    updateNeutralBomb() {
+        if (this.p.frameCount % 60 === 0 || !this.neutralTarget) {
+            let nearest = null;
+            let minDist = Infinity;
+
+            const activeEntities = this.getActiveEntities();
+            activeEntities.forEach(ent => {
+                const d = this.p.dist(ent.x, ent.y, this.bombBody.position.x, this.bombBody.position.y);
+                if (d < minDist) {
+                    minDist = d;
+                    nearest = ent;
+                }
+            });
+            this.neutralTarget = nearest;
+        }
+
+        if (this.neutralTarget && this.bombBody && window.Matter) {
+            const dx = this.neutralTarget.x - this.bombBody.position.x;
+            const dy = this.neutralTarget.y - this.bombBody.position.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            if (dist > 0.001) {
+                window.Matter.Body.applyForce(this.bombBody, this.bombBody.position, {
+                    x: (dx / dist) * this.BOMB_SPEED,
+                    y: (dy / dist) * this.BOMB_SPEED
+                });
+            }
+        }
+    }
+
+    explodeBomb() {
+        this.playSound('crash');
+        this.shake(30, 40);
+
+        const victim = this.getEntity(this.bombHolderId);
+        if (!victim) return;
+
+        this.ui.showTurnMessage(`${victim.player.name} Exploded!`, '#FF5A36');
+
+        if (victim.body) {
+            this.removePhysicsBody(victim.body);
+            victim.body = null;
+        }
+
+        this.spawnParticles(victim.x, victim.y, { color: '#211B18', count: 20, size: 24, speed: 7 });
+        this.spawnParticles(victim.x, victim.y, { color: '#FF5A36', count: 20, size: 20, speed: 8 });
+
+        this.eliminatePlayer(victim.index);
+
+        // Award points to all surviving players
+        this.players.forEach(p => {
+            if (!p.isEliminated && p.id !== this.bombHolderId) {
+                p.score++;
+            }
+        });
+        this.updateUI();
+
+        const survivors = this.players.filter(p => !p.isEliminated);
+        if (survivors.length <= 1) {
+            this.endRound(survivors[0] || null);
+        } else {
+            this.scheduleTimeout(() => {
+                if (this.state.phase === 'PLAYING') this.startNewRound();
+            }, 1000);
+        }
+    }
+
+    runDemoAI() {
+        const activeEntities = this.getActiveEntities();
+
+        activeEntities.forEach(bot => {
+            let targetPos = null;
+            let mode = 'CHASE';
+
+            const edgeMargin = 150;
+            const nearLeft = bot.x < (this.CX - this.ARENA_W/2 + edgeMargin);
+            const nearRight = bot.x > (this.CX + this.ARENA_W/2 - edgeMargin);
+            const nearTop = bot.y < (this.CY - this.ARENA_H/2 + edgeMargin);
+            const nearBottom = bot.y > (this.CY + this.ARENA_H/2 - edgeMargin);
+
+            if (nearLeft || nearRight || nearTop || nearBottom) {
+                targetPos = { x: this.CX, y: this.CY };
+                mode = 'CHASE';
+            } else if (this.bombHolderId === null && this.bombBody) {
+                targetPos = this.bombBody.position;
+                mode = 'CHASE';
+            } else if (bot.id === this.bombHolderId) {
+                let nearest = null;
+                let minDist = Infinity;
+                activeEntities.forEach(other => {
+                    if (other === bot) return;
+                    const d = this.p.dist(bot.x, bot.y, other.x, other.y);
+                    if (d < minDist) { minDist = d; nearest = other; }
+                });
+                if (nearest) targetPos = { x: nearest.x, y: nearest.y };
+                mode = 'CHASE';
+            } else {
+                const holder = this.getEntity(this.bombHolderId);
+                if (holder) {
+                    targetPos = { x: holder.x, y: holder.y };
+                    mode = 'FLEE';
+                }
+            }
+
+            if (!targetPos) return;
+
+            const angleToTarget = Math.atan2(targetPos.y - bot.y, targetPos.x - bot.x);
+            const desiredAngle = mode === 'CHASE' ? angleToTarget : angleToTarget + Math.PI;
+            const diff = Math.atan2(Math.sin(desiredAngle - bot.angle), Math.cos(desiredAngle - bot.angle));
+
+            if (Math.abs(diff) < 0.6) {
+                if (!bot.isBoosting) this.simulateInput(bot.id, 'PRESS');
+            } else {
+                if (bot.isBoosting) this.simulateInput(bot.id, 'RELEASE');
             }
         });
     }
@@ -247,7 +305,8 @@ export default class BombTag extends BaseGame {
     onDraw() {
         this.p.push();
         this.p.translate(this.CX, this.CY);
-        this.p.fill('#FAF6F0'); this.p.noStroke(); 
+        this.p.fill('#FAF6F0');
+        this.p.noStroke(); 
         this.p.rectMode(this.p.CENTER); 
         this.p.rect(0, 0, this.ARENA_W, this.ARENA_H);
         
@@ -259,140 +318,28 @@ export default class BombTag extends BaseGame {
         this.p.rect(w / 2 + thick / 2, 0, thick, h);
         this.p.pop();
 
-        if (this.bombHolderId === null) {
-            const pos = this.bombBody.position;
-            this.drawBomb(pos.x, pos.y, true);
+        if (this.bombHolderId === null && this.bombBody) {
+            this.drawBomb(this.bombBody.position.x, this.bombBody.position.y, true);
         }
 
-        this.drawPlayers();
+        this.drawRotateTapArrows({ distance: this.PLAYER_SIZE / 2 + 25, size: 10 });
+        // Avatars stay upright facing forward at all times
+        this.drawEntities({ shadow: false, rotation: 0, facing: 1 });
+
+        // Draw bomb above the current holder
+        if (this.bombHolderId !== null) {
+            const holder = this.getEntity(this.bombHolderId);
+            if (holder) {
+                this.drawBomb(holder.x, holder.y - 70, false);
+            }
+        }
+
         this.drawParticles();
         this.drawTimerBadge(this.bombHolderId !== null ? Math.ceil(this.bombTimer / 60) : "GET BOMB!", {
             y: 80,
             width: this.bombHolderId !== null ? 140 : 220,
             criticalThreshold: 5,
             fontSize: this.bombHolderId !== null ? 46 : 24
-        });
-    }
-
-    updateNeutralBomb() {
-        if (this.p.frameCount % 60 === 0 || !this.neutralTarget) {
-            let nearest = null;
-            let minDist = 9999;
-
-            this.gamePlayers.forEach(gp => {
-                if (this.players[gp.idx].isEliminated) return;
-                const d = Matter.Vector.magnitude(Matter.Vector.sub(gp.body.position, this.bombBody.position));
-                if (d < minDist) {
-                    minDist = d;
-                    nearest = gp;
-                }
-            });
-            this.neutralTarget = nearest;
-        }
-
-        if (this.neutralTarget) {
-            const force = Matter.Vector.sub(this.neutralTarget.body.position, this.bombBody.position);
-            const norm = Matter.Vector.normalise(force);
-            Matter.Body.applyForce(this.bombBody, this.bombBody.position, Matter.Vector.mult(norm, this.BOMB_SPEED));
-        }
-    }
-
-    handleCollisions(event) {
-        if (this.tagCooldown > 0) return;
-
-        const pairs = event.pairs;
-        pairs.forEach(pair => {
-            const labelA = pair.bodyA.label;
-            const labelB = pair.bodyB.label;
-
-            if (labelA.startsWith('player') && labelB.startsWith('player')) {
-                const idA = parseInt(labelA.split('-')[1]);
-                const idB = parseInt(labelB.split('-')[1]);
-
-                if (idA === this.bombHolderId || idB === this.bombHolderId) {
-                    const newHolder = (idA === this.bombHolderId) ? idB : idA;
-                    this.bombHolderId = newHolder;
-                    this.tagCooldown = 30; 
-                    this.playSound('bump');
-                    
-                    const pos = pair.collision.supports[0] || pair.bodyA.position;
-                    this.spawnParticles(pos.x, pos.y, { color: '#FFFFFF', count: 10, size: 14, speed: 5 });
-                }
-            }
-
-            if (this.bombHolderId === null && (labelA === 'bomb' || labelB === 'bomb')) {
-                const otherBody = labelA === 'bomb' ? pair.bodyB : pair.bodyA;
-                if (!otherBody.label.startsWith('player')) return; 
-
-                const id = parseInt(otherBody.label.split('-')[1]);
-                this.bombHolderId = id;
-                this.playSound('lock');
-                Matter.Composite.remove(this.world, this.bombBody);
-            }
-        });
-    }
-
-    explodeBomb() {
-        this.playSound('crash');
-        this.shake(30, 40);
-
-        const victimGP = this.gamePlayers.find(gp => gp.id === this.bombHolderId);
-        if (!victimGP) return;
-
-        const victimName = this.players[victimGP.idx].name;
-        this.ui.showTurnMessage(`${victimName} Exploded!`, '#FF5A36');
-
-        this.eliminatePlayer(victimGP.idx); 
-
-        const pos = victimGP.body.position;
-        this.spawnParticles(pos.x, pos.y, { color: '#211B18', count: 20, size: 24, speed: 7 });
-        this.spawnParticles(pos.x, pos.y, { color: '#FF5A36', count: 20, size: 20, speed: 8 });
-        
-        Matter.Composite.remove(this.world, victimGP.body);
-
-        this.players.forEach(p => {
-            if (!p.isEliminated && p.id !== this.bombHolderId) {
-                p.score++;
-            }
-        });
-        this.updateUI();
-
-        const survivors = this.players.filter(p => !p.isEliminated);
-        
-        if (survivors.length <= 1) {
-            const winner = survivors[0];
-            this.endRound(winner); 
-        } else {
-            setTimeout(() => {
-                if (this.state.phase === 'PLAYING') this.softReset();
-            }, 1000);
-        }
-    }
-
-    drawPlayers() {
-        const p = this.p;
-        this.gamePlayers.forEach(gp => {
-            const basePlayer = this.players[gp.idx];
-            if (basePlayer.isEliminated) return;
-
-            let animType = gp.isBoosting ? 'RUN' : 'IDLE';
-
-            this.drawAvatar(basePlayer, gp.body.position.x, gp.body.position.y, {
-                size: this.PLAYER_SIZE,
-                anim: animType,
-                expression: gp.expression,
-                facing: Math.cos(gp.angle) > 0 ? 1 : -1
-            });
-
-            this.drawDirectionArrow(gp.body.position.x, gp.body.position.y, gp.angle, {
-                distance: this.PLAYER_SIZE / 2 + 25,
-                size: 10,
-                color: basePlayer.color
-            });
-
-            if (gp.id === this.bombHolderId) {
-                this.drawBomb(gp.body.position.x, gp.body.position.y - 70, false);
-            }
         });
     }
 

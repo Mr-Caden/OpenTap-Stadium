@@ -206,43 +206,58 @@ body {
 }
 
 #ui-top-bar {
-    padding: 20px 24px;
+    padding: 16px 20px;
     display: flex;
     justify-content: space-between;
+    align-items: flex-start;
     pointer-events: auto;
     transition: opacity 0.2s ease;
+    width: 100%;
 }
 
+/* Responsive scoreboard supporting up to 10 players cleanly */
 #ui-scoreboard {
     display: flex;
-    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+    max-width: calc(100vw - 160px);
 }
 
 .player-badge {
     background: rgba(255, 255, 255, 0.96);
-    padding: 7px 18px;
+    padding: 6px 14px;
     border-radius: 20px;
     display: flex;
     align-items: center;
-    gap: 8px;
-    font-weight: 700;
-    font-size: 0.9rem;
+    gap: 7px;
+    font-weight: 800;
+    font-size: 0.85rem;
     box-shadow: 0 4px 12px rgba(33, 27, 24, 0.15);
     transition: opacity 0.3s;
     white-space: nowrap;
-    min-width: 100px;
+    min-width: 80px;
+}
+
+.player-badge.compact {
+    padding: 4px 10px;
+    font-size: 0.78rem;
+    min-width: 65px;
+    gap: 5px;
 }
 
 .p-dot {
-    width: 10px;
-    height: 10px;
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
+    flex-shrink: 0;
 }
 
 .p-score {
-    font-size: 1.1rem;
+    font-size: 1rem;
     color: var(--text-main);
-    margin-left: 5px;
+    margin-left: 3px;
+    font-weight: 900;
 }
 
 /* --- WII-STYLE PLAYER PLAZA & LOUNGE --- */
@@ -627,14 +642,14 @@ body {
     transform: translateX(-50%) translateY(0);
 }
 
-/* --- CENTER MESSAGE & QR MODAL LAYER --- */
+/* --- CENTER MESSAGE & MODAL LAYER --- */
 #ui-center-message {
     position: fixed;
     top: 0;
     left: 0;
     width: 100vw;
     height: 100vh;
-    z-index: 3500; /* Elevated above all overlays and modals */
+    z-index: 3500;
     display: flex;
     justify-content: center;
     align-items: center;
@@ -652,7 +667,7 @@ body {
 
 .message-card {
     background: white;
-    padding: 36px 40px;
+    padding: 32px 36px;
     border-radius: var(--radius);
     text-align: center;
     box-shadow: 0 20px 50px rgba(33, 27, 24, 0.3);
@@ -662,17 +677,225 @@ body {
     animation: popIn 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
 }
 
+.message-card.podium-card {
+    width: min(1200px, 96vw);
+    max-width: 96vw;
+    padding: 24px 28px;
+}
+
+.message-card.standings-card {
+    width: min(640px, 94vw);
+    max-width: 94vw;
+}
+
 .message-card h1 {
-    margin: 0 0 10px 0;
+    margin: 0 0 8px 0;
     color: var(--text-main);
     font-size: 2rem;
     font-weight: 900;
 }
 
 .message-content {
-    margin: 0 0 20px 0;
+    margin: 0 0 16px 0;
     color: var(--text-muted);
     font-size: 1.05rem;
+}
+
+/* --- SCORE-SCALED PODIUM ARENA --- */
+.podium-container {
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 12px;
+    width: 100%;
+    min-height: 380px;
+    height: 380px; /* Explicit height ensures flex-end alignment resolves properly */
+    margin: 10px 0 16px 0;
+    padding: 0 10px 10px 10px;
+    overflow-x: auto;
+    overflow-y: visible;
+}
+
+.podium-container.large-lobby {
+    gap: 8px;
+    padding-bottom: 6px;
+}
+
+.podium-column {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    flex: 1 1 0;
+    min-width: 62px;
+    max-width: 110px;
+    height: 100%;
+}
+
+.podium-canvas-wrapper {
+    position: relative;
+    overflow: visible;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    margin-bottom: -12px;
+    z-index: 2;
+}
+
+.podium-canvas-wrapper canvas {
+    display: block;
+    overflow: visible;
+}
+
+.podium-bar {
+    width: 100%;
+    min-height: 44px;
+    border-radius: 14px 14px 4px 4px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    padding-top: 8px;
+    box-shadow: 0 6px 16px rgba(45, 37, 34, 0.12);
+    transition: height 0.75s cubic-bezier(0.34, 1.56, 0.64, 1);
+    position: relative;
+    overflow: hidden;
+}
+
+.podium-bar.rank-1 {
+    background: linear-gradient(180deg, #f59e0b 0%, #d97706 100%) !important;
+    box-shadow: 0 0 26px rgba(245, 158, 11, 0.5);
+    border: 2px solid #fbbf24;
+}
+
+.podium-bar.rank-2 {
+    background: linear-gradient(180deg, #94a3b8 0%, #64748b 100%) !important;
+    border: 2px solid #cbd5e1;
+}
+
+.podium-bar.rank-3 {
+    background: linear-gradient(180deg, #d97706 0%, #b45309 100%) !important;
+    border: 2px solid #f59e0b;
+}
+
+.podium-bar.rank-other {
+    background: linear-gradient(180deg, #ffffff 0%, #e8e1d5 100%) !important;
+    border: 1px solid #d8d1c7;
+}
+
+.podium-rank {
+    font-size: 1.15rem;
+    font-weight: 900;
+    color: #ffffff;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+    line-height: 1.1;
+}
+
+.podium-bar.rank-other .podium-rank {
+    color: var(--text-main);
+    text-shadow: none;
+}
+
+.podium-points {
+    font-size: 0.75rem;
+    font-weight: 800;
+    color: rgba(255, 255, 255, 0.95);
+    letter-spacing: 0.5px;
+    margin-top: 2px;
+}
+
+.podium-bar.rank-other .podium-points {
+    color: var(--text-muted);
+}
+
+.podium-name {
+    margin-top: 8px;
+    font-size: 0.85rem;
+    font-weight: 800;
+    color: var(--text-main);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+}
+
+/* --- TOURNAMENT STANDINGS TABLE --- */
+.standings-table {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 50vh;
+    overflow-y: auto;
+    margin: 12px 0 16px 0;
+    padding-right: 4px;
+}
+
+.standing-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: var(--bg-color);
+    border: 1px solid var(--border-color);
+    padding: 6px 14px;
+    border-radius: var(--radius);
+}
+
+.standing-row.leader {
+    background: #fef8ee;
+    border-color: #f59e0b;
+}
+
+.st-rank {
+    font-weight: 900;
+    font-size: 1rem;
+    color: var(--text-muted);
+    min-width: 28px;
+}
+
+.st-avatar-wrapper {
+    width: 56px;
+    height: 56px;
+    flex-shrink: 0;
+}
+
+.st-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+    text-align: left;
+}
+
+.st-name {
+    font-size: 0.95rem;
+    font-weight: 800;
+    color: var(--text-main);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.st-bar-bg {
+    width: 100%;
+    height: 10px;
+    background: rgba(0, 0, 0, 0.08);
+    border-radius: 5px;
+    overflow: hidden;
+}
+
+.st-bar-fill {
+    height: 100%;
+    border-radius: 5px;
+    transition: width 0.6s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.st-points {
+    font-weight: 900;
+    font-size: 1.25rem;
+    color: var(--text-main);
+    min-width: 32px;
+    text-align: right;
 }
 
 /* --- TOURNAMENT BANNER --- */
@@ -749,7 +972,6 @@ body {
     pointer-events: auto;
 }
 
-/* Full-Screen Theater Tutorial Overlay with Adaptive Viewport Scaling */
 #tutorial-overlay {
     position: fixed;
     top: 0;
@@ -966,7 +1188,6 @@ body {
     line-height: 1.4;
 }
 
-/* Fluid Ready-Up Section with Scroll Protection */
 .tutorial-ready-section {
     flex: 1 1 auto;
     display: flex;

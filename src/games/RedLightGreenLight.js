@@ -19,8 +19,10 @@ export default class RedLightGreenLight extends BaseGame {
     }
 
     onSetup() {
+        const count = this.players.length;
+
         this.config.winCondition = 'ROUNDS';
-        this.config.winValue = 3;
+        this.config.winValue = count >= 7 ? 2 : 3;
         this.config.livesPerRound = 1;
         this.config.eliminateOnDeath = false;
         this.config.roundEndCriteria = 'NONE';
@@ -48,7 +50,9 @@ export default class RedLightGreenLight extends BaseGame {
         this.endTimerStart = 0;
 
         const totalCount = this.players.length;
-        const lanePositions = this.getLinearPositions(totalCount, 150, { axis: 'y' });
+        // Compress lane spacing dynamically (up to 10 tracks fit in the 860px vertical band)
+        const laneSpacing = Math.min(150, Math.floor(860 / Math.max(1, totalCount)));
+        const lanePositions = this.getLinearPositions(totalCount, laneSpacing, { axis: 'y' });
 
         this.gamePlayers = this.players.map((basePlayer, index) => ({
             id: basePlayer.id,

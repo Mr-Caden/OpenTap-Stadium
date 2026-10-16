@@ -19,8 +19,11 @@ export default class PaintParty extends BaseGame {
     }
 
     onSetup() {
+        const count = this.players.length;
+
         this.config.winCondition = 'TIME'; 
-        this.config.roundDuration = 45000;
+        // 30 seconds for 7+ players, 45 seconds for smaller lobbies
+        this.config.roundDuration = count >= 7 ? 30000 : 45000;
         this.config.livesPerRound = 1;
         this.config.eliminateOnDeath = false;
         this.config.turnBased = false; 
@@ -29,7 +32,8 @@ export default class PaintParty extends BaseGame {
         this.CELL_SIZE = 120; 
         this.GRID_COLS = Math.ceil(this.V_WIDTH / this.CELL_SIZE);
         this.GRID_ROWS = Math.ceil(this.V_HEIGHT / this.CELL_SIZE);
-        this.MOVE_SPEED = 9; 
+        // Slightly faster pace in crowded arenas
+        this.MOVE_SPEED = count >= 6 ? 10.5 : 9; 
         
         this.grid = []; 
     }

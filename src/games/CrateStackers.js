@@ -19,15 +19,20 @@ export default class CrateStackers extends BaseGame {
     }
 
     onSetup() {
+        const count = this.players.length;
+
+        // Dynamic player count scaling: 7+ players enter Sudden Death immediately
         this.config.winCondition = 'SURVIVAL'; 
         this.config.roundResetType = 'ELIMINATION'; 
         this.config.roundEndCriteria = 'NONE'; 
-        this.config.livesPerRound = 3; 
+        this.config.livesPerRound = count >= 7 ? 1 : (count >= 4 ? 2 : 3); 
+        this.config.winValue = count >= 7 ? 2 : 3;
         this.config.eliminateOnDeath = true; 
         this.config.turnBased = true;
         this.config.turnBasedBackgroundColor = true;
 
-        this.CRANE_SPEED = 0.03;
+        // Responsive crane speed keeps matches moving briskly in large lobbies
+        this.CRANE_SPEED = count >= 6 ? 0.038 : 0.03;
         this.CRANE_WIDTH = 1400; 
         this.BLOCK_BASE_SIZE = 180; 
 
@@ -286,7 +291,7 @@ export default class CrateStackers extends BaseGame {
         this.playSound('crash');
         this.shake(30, 40);
 
-        setTimeout(() => {
+        this.scheduleTimeout(() => {
             if (this.state.phase === 'PLAYING' || this.state.phase === 'INTRO') {
                 this.softReset();
             }

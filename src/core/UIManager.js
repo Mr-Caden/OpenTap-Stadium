@@ -35,12 +35,12 @@ export default class UIManager {
             const style = document.createElement('style');
             style.id = 'heart-style';
             style.innerHTML = `
-                .heart-container { display: flex; align-items: center; margin-left: 8px; gap: 4px; }
-                .heart-icon { display: inline-block; width: 10px; height: 10px; transform: rotate(45deg); position: relative; }
-                .heart-icon:before, .heart-icon:after { content: ""; width: 10px; height: 10px; border-radius: 50%; position: absolute; }
-                .heart-icon:before { top: -5px; left: 0; }
-                .heart-icon:after { top: 0; left: -5px; }
-                .heart-count { font-weight: 800; font-size: 1.1rem; margin-right: 2px; color: #2D2522; }
+                .heart-container { display: flex; align-items: center; margin-left: 6px; gap: 3px; }
+                .heart-icon { display: inline-block; width: 9px; height: 9px; transform: rotate(45deg); position: relative; }
+                .heart-icon:before, .heart-icon:after { content: ""; width: 9px; height: 9px; border-radius: 50%; position: absolute; }
+                .heart-icon:before { top: -4.5px; left: 0; }
+                .heart-icon:after { top: 0; left: -4.5px; }
+                .heart-count { font-weight: 800; font-size: 1rem; margin-right: 2px; color: #2D2522; }
             `;
             document.head.appendChild(style);
         }
@@ -72,12 +72,12 @@ export default class UIManager {
     fireConfetti() {
         this.confettiCanvas.width = window.innerWidth;
         this.confettiCanvas.height = window.innerHeight;
-        for (let i = 0; i < 150; i++) {
+        for (let i = 0; i < 160; i++) {
             this.confettiParticles.push({
                 x: window.innerWidth / 2,
                 y: window.innerHeight / 2,
-                vx: (Math.random() - 0.5) * 20,
-                vy: (Math.random() - 0.5) * 20 - 5,
+                vx: (Math.random() - 0.5) * 22,
+                vy: (Math.random() - 0.5) * 22 - 6,
                 color: `hsl(${Math.random() * 360}, 100%, 50%)`,
                 size: Math.random() * 10 + 5,
                 rotation: Math.random() * 360,
@@ -355,14 +355,16 @@ export default class UIManager {
     }
 
     updateScoreboard(players) {
-        if (!this.scoreboard) return;
+        if (!this.scoreboard || !players) return;
         this.scoreboard.innerHTML = '';
+
+        const isCrowded = players.length > 5;
 
         players.forEach(p => {
             const badge = document.createElement('div');
-            badge.className = 'player-badge';
+            badge.className = `player-badge ${isCrowded ? 'compact' : ''}`;
             badge.style.borderBottom = `3px solid ${p.color}`;
-            if (p.isEliminated) badge.style.opacity = '0.5';
+            if (p.isEliminated) badge.style.opacity = '0.45';
 
             let statusHTML = '';
             if (p.statusType === 'hearts') {
@@ -387,7 +389,6 @@ export default class UIManager {
         if (!this.centerMessage) return;
         this._cleanupModalP5();
 
-        // Valid DOM structure: uses div.message-content rather than invalid p-wrapped divs
         this.centerMessage.innerHTML = `
             <div class="message-card">
                 <h1>${title}</h1>
@@ -400,32 +401,68 @@ export default class UIManager {
     }
 
     showPodium(players, buttonText, onButtonClick) {
-        if (!this.centerMessage) return;
+        if (!this.centerMessage || !players || players.length === 0) return;
         this._cleanupModalP5();
         this.fireConfetti();
 
-        const sorted = [...players].sort((a, b) => b.score - a.score);
-        const maxScore = sorted[0].score;
-        const minScore = sorted[sorted.length - 1].score;
+        // Robust score normalization supporting custom status or standard score fields
+        const normalized = players.map(p => ({
+            ...p,
+            finalScore: typeof p.score === 'number' && !isNaN(p.score) 
+                ? p.score 
+                : (parseInt(p.customStatus) || 0)
+        }));
+
+        const sorted = [...normalized].sort((a, b) => b.finalScore - a.finalScore);
+        const maxScore = sorted[0]?.finalScore || 0;
+        const minScore = sorted[sorted.length - 1]?.finalScore || 0;
         const totalPlayers = sorted.length;
 
-        let podiumHTML = '<div class="podium-container">';
+        // Dynamic responsive dimensions supporting up to 10 players
+        const isLargeLobby = totalPlayers > 5;
+        const canvasW = isLargeLobby ? 80 : 106;
+        const canvasH = isLargeLobby ? 148 : 170;
+        const avatarSize = isLargeLobby ? 48 : 64;
+        
+        // Baseline positioned to guarantee full headroom during victory jumps with accessories
+        const baselineY = isLargeLobby ? 104 : 122;
+
+        const maxBarPx = isLargeLobby ? 175 : 210;
+        const minBarPx = 44;
+
+        let podiumHTML = `<div class="podium-container ${isLargeLobby ? 'large-lobby' : ''}">`;
+        
         sorted.forEach((p, index) => {
-            const heightPerc = maxScore > 0 ? Math.max(20, (p.score / maxScore) * 100) : 20;
-            const isWinner = p.score === maxScore && maxScore > 0;
-            const barClass = isWinner ? 'podium-bar winner' : 'podium-bar';
+            // Pixel-based podium height calculation directly proportional to relative score
+            let calculatedBarHeight = minBarPx;
+            if (maxScore > 0) {
+                const ratio = Math.max(0, p.finalScore) / maxScore;
+                calculatedBarHeight = Math.round(minBarPx + ratio * (maxBarPx - minBarPx));
+            }
+
+            const isWinner = p.finalScore === maxScore && maxScore > 0;
+            const rankTier = index === 0 && isWinner ? 'rank-1' : (index === 1 ? 'rank-2' : (index === 2 ? 'rank-3' : 'rank-other'));
             const canvasId = `podium-av-${index}`;
 
-            podiumHTML += `<div class="podium-column"><div class="podium-canvas-wrapper" id="${canvasId}"></div><div class="${barClass}" style="height: ${heightPerc}px;"><span class="podium-rank">${p.score}</span></div><div class="podium-name">${p.name}</div></div>`;
+            podiumHTML += `
+                <div class="podium-column">
+                    <div class="podium-canvas-wrapper" id="${canvasId}" style="width:${canvasW}px; height:${canvasH}px;"></div>
+                    <div class="podium-bar ${rankTier}" data-target-height="${calculatedBarHeight}" style="height: 0px;">
+                        <span class="podium-rank">#${index + 1}</span>
+                        <span class="podium-points">${p.finalScore} PTS</span>
+                    </div>
+                    <div class="podium-name">${p.name}</div>
+                </div>
+            `;
         });
         podiumHTML += '</div>';
 
         this.centerMessage.innerHTML = `
-            <div class="message-card">
+            <div class="message-card podium-card">
                 <h1>Match Complete!</h1>
                 ${podiumHTML}
-                <div style="display:flex; flex-direction:column; gap:10px; align-items:center;">
-                    <button id="podium-btn" class="primary-btn">${buttonText}</button>
+                <div style="display:flex; flex-direction:column; gap:10px; align-items:center; margin-top:16px;">
+                    <button id="podium-btn" class="primary-btn">${buttonText || "Play Again"}</button>
                     <button id="podium-exit-btn" class="secondary-btn" style="background:rgba(33,27,24,0.08); color:#2D2522; border-color:#D8D1C7; margin:0;">Back to Hub</button>
                 </div>
             </div>
@@ -442,47 +479,93 @@ export default class UIManager {
             });
         }
 
+        // Trigger spring animation for podium bars to rise up into their score-scaled heights
+        setTimeout(() => {
+            const bars = this.centerMessage.querySelectorAll('.podium-bar');
+            bars.forEach(bar => {
+                const targetH = bar.getAttribute('data-target-height');
+                if (targetH) {
+                    bar.style.height = `${targetH}px`;
+                }
+            });
+        }, 50);
+
+        // Mount lightweight non-clipping p5 avatar sketches on top of each podium column
         setTimeout(() => {
             sorted.forEach((p, index) => {
                 const canvasId = `podium-av-${index}`;
-                const isWinner = p.score === maxScore && maxScore > 0;
-                const isLast = (p.score === minScore) && !isWinner;
-                let anim = 'IDLE'; let exp = 'idle';
-                if (isWinner) { anim = 'WIN'; exp = 'happy'; }
-                else if (index === 1 && !isLast) { anim = 'IDLE'; exp = 'happy'; }
-                else if (isLast) { if (totalPlayers >= 4) { anim = 'DIZZY'; exp = 'stunned'; } else { anim = 'IDLE'; exp = 'sad'; } }
-                else { anim = 'IDLE'; exp = 'sad'; }
-                if (maxScore === 0) { anim = 'IDLE'; exp = 'idle'; }
+                const isWinner = p.finalScore === maxScore && maxScore > 0;
+                const isLast = (p.finalScore === minScore) && !isWinner;
+                
+                let anim = 'IDLE'; 
+                let exp = 'idle';
+
+                if (isWinner) { 
+                    anim = 'WIN'; 
+                    exp = 'happy'; 
+                } else if (index === 1 && !isLast) { 
+                    anim = 'IDLE'; 
+                    exp = 'happy'; 
+                } else if (isLast) { 
+                    if (totalPlayers >= 4) { 
+                        anim = 'DIZZY'; 
+                        exp = 'stunned'; 
+                    } else { 
+                        anim = 'IDLE'; 
+                        exp = 'sad'; 
+                    } 
+                } else { 
+                    anim = 'IDLE'; 
+                    exp = 'sad'; 
+                }
+
+                if (maxScore === 0) { 
+                    anim = 'IDLE'; 
+                    exp = 'idle'; 
+                }
 
                 const inst = new p5((sketch) => {
                     const avatars = new AvatarSystem(sketch);
-                    sketch.setup = () => { sketch.createCanvas(120, 140); sketch.loop(); };
+                    sketch.setup = () => { 
+                        sketch.createCanvas(canvasW, canvasH); 
+                        sketch.loop(); 
+                    };
                     sketch.draw = () => {
-                        sketch.clear(); sketch.push(); sketch.translate(60, 90);
+                        sketch.clear(); 
+                        sketch.push(); 
+                        sketch.translate(canvasW / 2, baselineY);
                         avatars.applyTransform(anim);
-                        avatars.draw({ x: 0, y: 0, size: 70, color: p.color, variant: p.variant, accessory: p.accessory, expression: exp });
+                        avatars.draw({ 
+                            x: 0, 
+                            y: 0, 
+                            size: avatarSize, 
+                            color: p.color, 
+                            variant: p.variant, 
+                            accessory: p.accessory, 
+                            expression: exp 
+                        });
                         sketch.pop();
                     };
                 }, canvasId);
                 this.modalP5Instances.push(inst);
             });
-        }, 50);
+        }, 80);
     }
 
     showTournamentStandings(stats, players, title, subtitle, onNext, maxScoreOverride = null) {
-        if (!this.centerMessage) return;
+        if (!this.centerMessage || !stats) return;
         this._cleanupModalP5();
 
         const sortedStats = [...stats].sort((a, b) => b.newPoints - a.newPoints);
-        const maxPoints = maxScoreOverride || Math.max(1, sortedStats[0].newPoints);
+        const maxPoints = maxScoreOverride || Math.max(1, sortedStats[0]?.newPoints || 1);
 
         let rowsHTML = '<div class="standings-table">';
         sortedStats.forEach((stat, idx) => {
             const p = players.find(pl => pl.id === stat.id);
+            if (!p) return;
             const isLeader = idx === 0;
             const canvasId = `stand-av-${idx}`;
-            
-            const startPercent = (stat.oldPoints / maxPoints) * 100;
+            const startPercent = Math.min(100, (stat.oldPoints / maxPoints) * 100);
 
             rowsHTML += `
                 <div class="standing-row ${isLeader ? 'leader' : ''}">
@@ -501,7 +584,7 @@ export default class UIManager {
         rowsHTML += '</div>';
 
         this.centerMessage.innerHTML = `
-            <div class="message-card" style="min-width: 500px;">
+            <div class="message-card standings-card">
                 <h1>${title}</h1>
                 <div class="message-content">${subtitle}</div>
                 ${rowsHTML}
@@ -515,23 +598,38 @@ export default class UIManager {
         setTimeout(() => {
             sortedStats.forEach((stat, idx) => {
                 const bar = document.getElementById(`bar-${idx}`);
-                const endPercent = (stat.newPoints / maxPoints) * 100;
+                const endPercent = Math.min(100, (stat.newPoints / maxPoints) * 100);
                 if (bar) bar.style.width = `${endPercent}%`;
 
                 const p = players.find(pl => pl.id === stat.id);
+                if (!p) return;
                 const canvasId = `stand-av-${idx}`;
+
                 const inst = new p5((sketch) => {
                     const avatars = new AvatarSystem(sketch);
-                    sketch.setup = () => { sketch.createCanvas(60, 60); sketch.loop(); };
+                    sketch.setup = () => { 
+                        sketch.createCanvas(56, 56); 
+                        sketch.loop(); 
+                    };
                     sketch.draw = () => {
-                        sketch.clear(); sketch.push(); sketch.translate(30, 30);
-                        avatars.draw({ x: 0, y: 0, size: 50, color: p.color, variant: p.variant, accessory: p.accessory, expression: idx === 0 ? 'happy' : 'idle' });
+                        sketch.clear(); 
+                        sketch.push(); 
+                        sketch.translate(28, 30);
+                        avatars.draw({ 
+                            x: 0, 
+                            y: 0, 
+                            size: 44, 
+                            color: p.color, 
+                            variant: p.variant, 
+                            accessory: p.accessory, 
+                            expression: idx === 0 ? 'happy' : 'idle' 
+                        });
                         sketch.pop();
                     };
                 }, canvasId);
                 this.modalP5Instances.push(inst);
             });
-        }, 100);
+        }, 80);
     }
 
     showTurnMessage(text, color) {

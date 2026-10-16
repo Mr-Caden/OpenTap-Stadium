@@ -23,7 +23,10 @@ inputs.setNetworkManager(network);
 let currentMode = "hub";
 let currentGameState = "IDLE";
 let currentScreenType = "CONTROLLER";
-let demoInstances = [];
+
+// Virtualized Hub Card tracking
+let hubCards = [];
+let mountedHubDemos = new Map();
 let hubObserver = null;
 
 // Plaza simulation and single player editor state
@@ -325,17 +328,19 @@ function updateHostButton(code) {
     hostBtnRef.innerHTML = `${getHostIconSvg()}<span>Room: ${code} (${count})</span>`;
 }
 
+// --- VIRTUALIZED HOST HUB DEMO MANAGEMENT ---
+
 function cleanupDemos() {
     if (hubObserver) {
         hubObserver.disconnect();
         hubObserver = null;
     }
-    demoInstances.forEach((item) => {
-        if (item.canvasId) {
-            runner.unmount(item.canvasId);
-        }
+
+    mountedHubDemos.forEach((entry, canvasId) => {
+        runner.unmount(canvasId);
     });
-    demoInstances = [];
+    mountedHubDemos.clear();
+    hubCards = [];
 }
 
 function renderHub() {
@@ -345,10 +350,14 @@ function renderHub() {
     cleanupDemos();
     hubGrid.innerHTML = "";
     createTournamentBanner();
+
+    // 1. Render lightweight card DOM placeholders without allocating canvases upfront
     GAME_LIST.forEach((game) => createGameCard(game));
     audio.setTrack("lobby");
 
     network.broadcastState("LOBBY", "IDLE");
+
+    // 2. Virtualize hub cards: only mount and animate canvases when visible in viewport
     setupHubObserver();
 }
 
@@ -379,19 +388,24 @@ function createTournamentBanner() {
 function createGameCard(gameConfig) {
     const card = document.createElement("div");
     card.className = "game-card";
+    card.dataset.id = gameConfig.id;
+
     const canvasId = "card-" + gameConfig.id;
-    card.innerHTML = `<div class="card-canvas-wrapper" id="${canvasId}"></div><div class="card-info"><h3>${gameConfig.title}</h3><p>${gameConfig.description}</p></div>`;
+    card.innerHTML = `
+        <div class="card-canvas-wrapper" id="${canvasId}"></div>
+        <div class="card-info">
+            <h3>${gameConfig.title}</h3>
+            <p>${gameConfig.description}</p>
+        </div>
+    `;
+
     card.addEventListener("click", () => {
         audio.play("click");
         enterGameMode(gameConfig);
     });
-    hubGrid.appendChild(card);
 
-    const p5inst = runner.mount(gameConfig.class, canvasId, "demo");
-    if (p5inst) {
-        p5inst.noLoop();
-        demoInstances.push({ canvasId, cardElement: card, p5inst });
-    }
+    hubGrid.appendChild(card);
+    hubCards.push({ gameConfig, canvasId, cardElement: card });
 }
 
 function setupHubObserver() {
@@ -401,40 +415,79 @@ function setupHubObserver() {
     }
 
     if (!("IntersectionObserver" in window)) {
-        demoInstances.forEach((d) => {
-            if (d.p5inst) d.p5inst.loop();
-        });
+        // Fallback for browsers without IntersectionObserver
+        hubCards.forEach((c) => mountHubCard(c));
         return;
     }
 
     hubObserver = new IntersectionObserver(
         (entries) => {
             entries.forEach((entry) => {
-                const matched = demoInstances.find(
-                    (d) => d.cardElement === entry.target
-                );
-                if (!matched || !matched.p5inst) return;
+                const gameId = entry.target.dataset.id;
+                const matched = hubCards.find((c) => c.gameConfig.id === gameId);
+                if (!matched) return;
 
-                if (
-                    entry.isIntersecting &&
-                    currentMode === "hub" &&
-                    !isAttractMode
-                ) {
-                    matched.p5inst.loop();
+                if (entry.isIntersecting && currentMode === "hub" && !isAttractMode) {
+                    mountHubCard(matched);
                 } else {
-                    matched.p5inst.noLoop();
+                    unmountHubCard(matched);
                 }
             });
         },
         {
             root: hubGrid,
-            threshold: 0.1,
+            rootMargin: "120px 0px 120px 0px", // Preload slightly before scrolling into view
+            threshold: 0.05,
         }
     );
 
-    demoInstances.forEach((d) => {
-        hubObserver.observe(d.cardElement);
+    hubCards.forEach((c) => {
+        hubObserver.observe(c.cardElement);
     });
+}
+
+function mountHubCard(cardItem) {
+    if (mountedHubDemos.has(cardItem.canvasId)) {
+        const existing = mountedHubDemos.get(cardItem.canvasId);
+        if (existing && typeof existing.loop === "function") {
+            existing.loop();
+        }
+        return;
+    }
+
+    const p5inst = runner.mount(cardItem.gameConfig.class, cardItem.canvasId, "demo");
+    if (p5inst) {
+        mountedHubDemos.set(cardItem.canvasId, p5inst);
+    }
+}
+
+function unmountHubCard(cardItem) {
+    if (!mountedHubDemos.has(cardItem.canvasId)) return;
+
+    runner.unmount(cardItem.canvasId);
+    mountedHubDemos.delete(cardItem.canvasId);
+}
+
+function pauseDemos() {
+    mountedHubDemos.forEach((p5inst) => {
+        if (p5inst && typeof p5inst.noLoop === "function") {
+            p5inst.noLoop();
+        }
+    });
+}
+
+function resumeDemos() {
+    if (currentMode !== "hub" || isAttractMode) return;
+
+    if (!hubObserver) {
+        setupHubObserver();
+    } else {
+        mountedHubDemos.forEach((p5inst) => {
+            if (p5inst && typeof p5inst.loop === "function") {
+                p5inst.loop();
+            }
+        });
+    }
 }
 
 function enterGameMode(gameConfig) {
@@ -516,30 +569,6 @@ function returnToHub() {
         renderHub();
         ui.hideTransition();
     });
-}
-
-function pauseDemos() {
-    demoInstances.forEach((d) => {
-        if (d.p5inst) d.p5inst.noLoop();
-    });
-}
-
-function resumeDemos() {
-    if (currentMode !== "hub" || isAttractMode) return;
-
-    if (!hubObserver) {
-        setupHubObserver();
-    } else {
-        demoInstances.forEach((d) => {
-            const rect = d.cardElement.getBoundingClientRect();
-            const isVisible = rect.top < window.innerHeight && rect.bottom > 0;
-            if (isVisible) {
-                d.p5inst.loop();
-            } else {
-                d.p5inst.noLoop();
-            }
-        });
-    }
 }
 
 function showTournamentSetup() {

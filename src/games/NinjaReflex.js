@@ -19,8 +19,10 @@ export default class NinjaReflex extends BaseGame {
     }
 
     onSetup() {
+        const count = this.players.length;
+
         this.config.winCondition = 'SCORE';
-        this.config.winValue = 7;
+        this.config.winValue = count >= 7 ? 4 : (count >= 4 ? 5 : 7);
         this.config.roundEndCriteria = 'SURVIVAL';
         this.config.livesPerRound = 1;
         this.config.eliminateOnDeath = true;
@@ -59,7 +61,11 @@ export default class NinjaReflex extends BaseGame {
         this.scheduleNextFake(now);
 
         const count = this.players.length;
-        const positions = this.getLinearPositions(count, 300, {
+        // Dynamically compress horizontal spacing and avatar sizing for large lobbies
+        const spacing = Math.min(280, Math.floor(1540 / Math.max(1, count)));
+        const avatarSize = count >= 7 ? 95 : (count >= 5 ? 115 : 140);
+
+        const positions = this.getLinearPositions(count, spacing, {
             axis: 'x',
             centerCoord: this.CX,
             fixedCoord: this.CY + 100
@@ -71,6 +77,7 @@ export default class NinjaReflex extends BaseGame {
             config: p,
             x: positions[i].x,
             y: positions[i].y,
+            size: avatarSize,
             anim: 'IDLE',
             expression: 'angry',
             reactionTime: null
