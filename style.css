@@ -701,6 +701,53 @@ body {
     font-size: 1.05rem;
 }
 
+/* --- TOURNAMENT SETUP OPTIONS --- */
+.tourney-opts {
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    margin: 20px 0 24px 0;
+    width: 100%;
+}
+
+.tourney-btn {
+    flex: 1;
+    max-width: 130px;
+    background: var(--accent-cream);
+    border: 2px solid var(--border-color);
+    border-radius: var(--radius);
+    padding: 16px 12px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    color: var(--text-main);
+    font-size: 0.95rem;
+    font-weight: 800;
+    transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+    box-shadow: 0 4px 12px rgba(45, 37, 34, 0.05);
+}
+
+.tourney-btn span {
+    font-size: 2.2rem;
+    font-weight: 900;
+    color: var(--accent);
+    line-height: 1;
+}
+
+.tourney-btn:hover {
+    transform: translateY(-3px);
+    background: #ffffff;
+    border-color: var(--accent);
+    box-shadow: 0 8px 20px rgba(255, 90, 54, 0.18);
+}
+
+.tourney-btn:active {
+    transform: translateY(0);
+}
+
 /* --- SCORE-SCALED PODIUM ARENA --- */
 .podium-container {
     display: flex;
@@ -709,7 +756,7 @@ body {
     gap: 12px;
     width: 100%;
     min-height: 380px;
-    height: 380px; /* Explicit height ensures flex-end alignment resolves properly */
+    height: 380px;
     margin: 10px 0 16px 0;
     padding: 0 10px 10px 10px;
     overflow-x: auto;

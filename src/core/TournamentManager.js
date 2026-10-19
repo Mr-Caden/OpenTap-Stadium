@@ -74,6 +74,7 @@ export default class TournamentManager {
         window.dispatchEvent(new CustomEvent('game-selected', { detail: gameConfig }));
 
         const tutorialsEnabled = localStorage.getItem('opentap_tutorials') !== 'false';
+        const controllerType = gameConfig.controllerType || 'CONTROLLER';
 
         this.ui.showTransition(() => {
             // Direct launch if tutorials are toggled off
@@ -85,18 +86,26 @@ export default class TournamentManager {
                     (results) => this.handleGameComplete(results),
                     rules
                 );
+                if (this.runner.inputManager && this.runner.inputManager.networkManager) {
+                    this.runner.inputManager.networkManager.broadcastState(controllerType, 'PLAYING');
+                }
                 this.ui.hideTransition();
                 return;
             }
 
             const activePlayersList = this.players.getActivePlayers();
 
-            // Show interactive ready-up tutorial
+            // Broadcast TUTORIAL state so phone controllers switch to the ready-up view
+            if (this.runner.inputManager && this.runner.inputManager.networkManager) {
+                this.runner.inputManager.networkManager.broadcastState(controllerType, 'TUTORIAL');
+            }
+
+            // Show interactive ready-up tutorial overlay
             this.ui.showTutorial(
                 gameConfig,
                 activePlayersList,
                 () => {
-                    // All players ready: launch match
+                    // All players ready: launch active tournament round
                     this.ui.showTransition(() => {
                         this.runner.unmount('tutorial-canvas-target');
                         this.runner.mount(
@@ -106,6 +115,9 @@ export default class TournamentManager {
                             (results) => this.handleGameComplete(results),
                             rules
                         );
+                        if (this.runner.inputManager && this.runner.inputManager.networkManager) {
+                            this.runner.inputManager.networkManager.broadcastState(controllerType, 'PLAYING');
+                        }
                         this.ui.hideTransition();
                     });
                 },
@@ -115,8 +127,23 @@ export default class TournamentManager {
                 }
             );
 
-            // Mount the live AI simulation directly inside the tutorial preview container
+            // Mount the live demo AI preview into the tutorial card
             this.runner.mount(gameConfig.class, 'tutorial-canvas-target', 'demo');
+
+            // Attach input listener so keyboard and phone button taps advance tutorial readiness
+            this.runner.inputManager.setGameListener((playerId, action) => {
+                if (this.ui.isTutorialActive) {
+                    if (action === "PRESS") {
+                        this.runner.audioManager.play("click");
+                        this.ui.playerReady(playerId);
+                    }
+                    return;
+                }
+                if (this.runner.activeGame) {
+                    this.runner.activeGame.handleInput(playerId, action);
+                }
+            });
+
             this.ui.hideTransition();
         });
     }
