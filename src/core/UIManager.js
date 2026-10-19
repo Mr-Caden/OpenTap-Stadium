@@ -60,7 +60,16 @@ export default class UIManager {
         }
     }
 
+    clearConfetti() {
+        this.confettiParticles = [];
+        if (this.confettiCtx && this.confettiCanvas) {
+            this.confettiCtx.clearRect(0, 0, this.confettiCanvas.width, this.confettiCanvas.height);
+        }
+    }
+
     _cleanupModalP5() {
+        this.clearConfetti();
+
         if (this._autoAdvanceTimer) {
             clearInterval(this._autoAdvanceTimer);
             this._autoAdvanceTimer = null;
@@ -130,6 +139,7 @@ export default class UIManager {
     }
 
     showTransition(callback) {
+        this.clearConfetti();
         this.transitionCurtain.classList.add('active');
         setTimeout(() => {
             if (callback) callback();
@@ -413,6 +423,95 @@ export default class UIManager {
         if (buttonText && onButtonClick) this._bindButton('msg-btn', onButtonClick);
     }
 
+    /**
+     * Upgraded round winner celebration screen featuring the winning player's animated avatar,
+     * vibrant player color styling, and an automatic countdown (strictly without full-match confetti shower).
+     */
+    showRoundWinner(winner, subtitle, onNext, autoAdvanceSeconds = 4) {
+        if (!this.centerMessage) return;
+        this._cleanupModalP5();
+
+        const hasWinner = winner !== null && winner !== undefined;
+        const winnerColor = hasWinner ? winner.color : "#FF5A36";
+        const winnerName = hasWinner ? winner.name : "Draw";
+        const titleText = hasWinner ? `${winnerName} Wins the Round!` : "Round Draw!";
+        const descText = subtitle || "Get ready for the next round!";
+        let secondsRemaining = autoAdvanceSeconds;
+
+        this.centerMessage.innerHTML = `
+            <div class="message-card round-winner-card" style="border-top: 6px solid ${winnerColor};">
+                <div class="round-winner-badge" style="background: ${winnerColor};">ROUND WINNER</div>
+                <div class="round-winner-avatar-box" id="round-winner-av"></div>
+                <h1 class="round-winner-title">${titleText}</h1>
+                <div class="message-content round-winner-subtitle">${descText}</div>
+                <button id="round-next-btn" class="primary-btn round-next-btn" style="background: ${winnerColor};">
+                    Next Round (<span id="round-timer-val">${secondsRemaining}</span>s)
+                </button>
+            </div>
+        `;
+
+        this.centerMessage.classList.add('visible');
+
+        // Mount animated winning avatar performing the victory jump
+        if (hasWinner) {
+            setTimeout(() => {
+                const target = document.getElementById('round-winner-av');
+                if (!target) return;
+
+                const sketch = (p) => {
+                    const avatars = new AvatarSystem(p);
+                    p.setup = () => {
+                        p.createCanvas(120, 130);
+                        p.loop();
+                    };
+                    p.draw = () => {
+                        p.clear();
+                        p.push();
+                        p.translate(60, 92);
+                        avatars.applyTransform('WIN');
+                        avatars.draw({
+                            x: 0,
+                            y: 0,
+                            size: 64,
+                            color: winner.color,
+                            variant: winner.variant,
+                            accessory: winner.accessory,
+                            expression: 'happy'
+                        });
+                        p.pop();
+                    };
+                };
+
+                const p5Inst = new p5(sketch, 'round-winner-av');
+                this.modalP5Instances.push(p5Inst);
+            }, 30);
+        }
+
+        const advanceCallback = () => {
+            if (this._autoAdvanceTimer) {
+                clearInterval(this._autoAdvanceTimer);
+                this._autoAdvanceTimer = null;
+            }
+            this.hideMessage();
+            if (onNext) onNext();
+        };
+
+        this._bindButton('round-next-btn', advanceCallback);
+
+        // Automatic countdown advances smoothly
+        this._autoAdvanceTimer = setInterval(() => {
+            secondsRemaining--;
+            const timerLabel = document.getElementById('round-timer-val');
+            if (timerLabel) {
+                timerLabel.innerText = secondsRemaining;
+            }
+
+            if (secondsRemaining <= 0) {
+                advanceCallback();
+            }
+        }, 1000);
+    }
+
     showPodium(players, buttonText, onButtonClick) {
         if (!this.centerMessage || !players || players.length === 0) return;
         this._cleanupModalP5();
@@ -546,7 +645,6 @@ export default class UIManager {
                     sketch.draw = () => {
                         sketch.clear(); 
                         sketch.push(); 
-                        // Baseline coordinates guarantee full headroom for jumping avatars and tall accessories
                         sketch.translate(canvasW / 2, baselineY);
                         avatars.applyTransform(anim);
                         avatars.draw({ 
@@ -693,13 +791,13 @@ export default class UIManager {
 
     hideMessage() {
         this._cleanupModalP5();
-        if (this._modalInputHandler) {
-            window.removeEventListener('player-input', this._modalInputHandler);
-            this._modalInputHandler = null;
-        }
         if (!this.centerMessage) return;
         this.centerMessage.classList.remove('visible');
         this.centerMessage.innerHTML = '';
+        if (this._boundKeyHandler) {
+            window.removeEventListener('keydown', this._boundKeyHandler);
+            this._boundKeyHandler = null;
+        }
     }
 
     _bindButton(id, callback) {

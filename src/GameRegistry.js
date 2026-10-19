@@ -13,6 +13,7 @@ import OrbitSling from "./games/OrbitSling.js";
 import LaserLeap from "./games/LaserLeap.js";
 import BombBarrage from "./games/BombBarrage.js";
 import HexagonCollapse from "./games/HexagonCollapse.js";
+import BumperBall from "./games/BumperBall.js";
 
 const REGISTERED_GAMES = [
     SumoDiscs,
@@ -28,6 +29,7 @@ const REGISTERED_GAMES = [
     LaserLeap,
     BombBarrage,
     HexagonCollapse,
+    BumperBall,
 ];
 
 /**
