@@ -945,6 +945,10 @@ body {
     text-align: right;
 }
 
+.tourney-next-btn {
+    min-width: 220px;
+}
+
 /* --- TOURNAMENT BANNER --- */
 #tournament-banner {
     grid-column: 1 / -1;

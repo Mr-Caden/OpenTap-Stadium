@@ -16,6 +16,9 @@ export default class UIManager {
         this.tutorialActivePlayers = [];
         this.tutorialAvatarSketches = new Map();
 
+        this._autoAdvanceTimer = null;
+        this._modalInputHandler = null;
+
         this._ensureElement('transition-curtain');
         this._ensureElement('tutorial-overlay');
         
@@ -58,6 +61,16 @@ export default class UIManager {
     }
 
     _cleanupModalP5() {
+        if (this._autoAdvanceTimer) {
+            clearInterval(this._autoAdvanceTimer);
+            this._autoAdvanceTimer = null;
+        }
+
+        if (this._modalInputHandler) {
+            window.removeEventListener('player-input', this._modalInputHandler);
+            this._modalInputHandler = null;
+        }
+
         if (this.modalP5Instances && this.modalP5Instances.length > 0) {
             this.modalP5Instances.forEach(inst => {
                 if (inst && typeof inst.remove === 'function') {
@@ -533,6 +546,7 @@ export default class UIManager {
                     sketch.draw = () => {
                         sketch.clear(); 
                         sketch.push(); 
+                        // Baseline coordinates guarantee full headroom for jumping avatars and tall accessories
                         sketch.translate(canvasW / 2, baselineY);
                         avatars.applyTransform(anim);
                         avatars.draw({ 
@@ -552,7 +566,7 @@ export default class UIManager {
         }, 80);
     }
 
-    showTournamentStandings(stats, players, title, subtitle, onNext, maxScoreOverride = null) {
+    showTournamentStandings(stats, players, title, subtitle, onNext, maxScoreOverride = null, autoAdvanceSeconds = 5) {
         if (!this.centerMessage || !stats) return;
         this._cleanupModalP5();
 
@@ -583,17 +597,48 @@ export default class UIManager {
         });
         rowsHTML += '</div>';
 
+        let secondsRemaining = autoAdvanceSeconds;
+
         this.centerMessage.innerHTML = `
             <div class="message-card standings-card">
                 <h1>${title}</h1>
                 <div class="message-content">${subtitle}</div>
                 ${rowsHTML}
-                <button id="tourney-next-btn" class="primary-btn" style="margin-top:16px;">Start Next Game</button>
+                <button id="tourney-next-btn" class="primary-btn tourney-next-btn" style="margin-top:16px;">
+                    Next Game (<span id="tourney-timer-val">${secondsRemaining}</span>s)
+                </button>
             </div>
         `;
 
         this.centerMessage.classList.add('visible');
-        this._bindButton('tourney-next-btn', onNext);
+
+        const advanceCallback = () => {
+            if (this._autoAdvanceTimer) {
+                clearInterval(this._autoAdvanceTimer);
+                this._autoAdvanceTimer = null;
+            }
+            if (this._modalInputHandler) {
+                window.removeEventListener('player-input', this._modalInputHandler);
+                this._modalInputHandler = null;
+            }
+            this.hideMessage();
+            if (onNext) onNext();
+        };
+
+        this._bindButton('tourney-next-btn', advanceCallback);
+
+        // Automated countdown timer to advance smoothly without requiring manual clicks
+        this._autoAdvanceTimer = setInterval(() => {
+            secondsRemaining--;
+            const timerLabel = document.getElementById('tourney-timer-val');
+            if (timerLabel) {
+                timerLabel.innerText = secondsRemaining;
+            }
+
+            if (secondsRemaining <= 0) {
+                advanceCallback();
+            }
+        }, 1000);
 
         setTimeout(() => {
             sortedStats.forEach((stat, idx) => {
@@ -648,32 +693,43 @@ export default class UIManager {
 
     hideMessage() {
         this._cleanupModalP5();
+        if (this._modalInputHandler) {
+            window.removeEventListener('player-input', this._modalInputHandler);
+            this._modalInputHandler = null;
+        }
         if (!this.centerMessage) return;
         this.centerMessage.classList.remove('visible');
         this.centerMessage.innerHTML = '';
-        if (this._boundKeyHandler) {
-            window.removeEventListener('keydown', this._boundKeyHandler);
-            this._boundKeyHandler = null;
-        }
     }
 
     _bindButton(id, callback) {
         const btn = document.getElementById(id);
-        if (btn) {
-            btn.addEventListener('click', () => {
-                this.hideMessage();
-                callback();
-            });
+        if (!btn) return;
+
+        // Clean up any existing player input listener
+        if (this._modalInputHandler) {
+            window.removeEventListener('player-input', this._modalInputHandler);
+            this._modalInputHandler = null;
         }
-        if (this._boundKeyHandler) window.removeEventListener('keydown', this._boundKeyHandler);
-        this._boundKeyHandler = (e) => {
-            if (e.key === 'Enter') {
-                this.hideMessage();
-                window.removeEventListener('keydown', this._boundKeyHandler);
-                this._boundKeyHandler = null;
-                callback();
+
+        const triggerAdvance = () => {
+            if (this._modalInputHandler) {
+                window.removeEventListener('player-input', this._modalInputHandler);
+                this._modalInputHandler = null;
+            }
+            this.hideMessage();
+            callback();
+        };
+
+        // Direct mouse click on button
+        btn.addEventListener('click', triggerAdvance, { once: true });
+
+        // Accept input from ANY player (local keyboard key or remote phone button PRESS)
+        this._modalInputHandler = (e) => {
+            if (e.detail && e.detail.type === 'PRESS') {
+                triggerAdvance();
             }
         };
-        window.addEventListener('keydown', this._boundKeyHandler);
+        window.addEventListener('player-input', this._modalInputHandler);
     }
 }

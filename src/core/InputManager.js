@@ -19,7 +19,7 @@ export default class InputManager {
     }
 
     handleKey(e, type) {
-        // Prevent default browser page scrolling and button activation
+        // Prevent default browser scrolling and default button triggers on common game keys
         if (['Space', 'ArrowUp', 'ArrowDown', ' ', 'Enter'].includes(e.key)) {
             e.preventDefault();
         }
@@ -35,18 +35,25 @@ export default class InputManager {
     }
 
     triggerInput(playerId, type, isNetworkInput, payload = null) {
-        if (!this.activeGameListener) return;
+        const dispatch = () => {
+            // Broadcast standardized event so menus, overlays, and UI can accept input from any player
+            window.dispatchEvent(new CustomEvent('player-input', {
+                detail: { playerId, type, payload }
+            }));
+
+            if (this.activeGameListener) {
+                this.activeGameListener(playerId, type, payload);
+            }
+        };
 
         if (isNetworkInput) {
-            this.activeGameListener(playerId, type, payload);
+            dispatch();
         } else {
             const delay = this.networkManager ? this.networkManager.systemLag : 0;
             if (delay > 0) {
-                setTimeout(() => { 
-                    this.activeGameListener(playerId, type, payload); 
-                }, delay);
+                setTimeout(dispatch, delay);
             } else {
-                this.activeGameListener(playerId, type, payload);
+                dispatch();
             }
         }
     }

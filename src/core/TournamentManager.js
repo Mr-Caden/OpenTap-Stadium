@@ -27,7 +27,7 @@ export default class TournamentManager {
         }));
 
         this.draftGames(numberOfGames);
-        this.showNextRoundScreen();
+        this.showTournamentStartScreen();
     }
 
     draftGames(count) {
@@ -41,10 +41,10 @@ export default class TournamentManager {
         }
     }
 
-    showNextRoundScreen() {
+    showTournamentStartScreen() {
         const nextGame = this.gameQueue[this.currentRoundIdx];
-        const title = `Game ${this.currentRoundIdx + 1} of ${this.roundsTotal}`;
-        const subtitle = `Next Up: ${nextGame.title}`;
+        const title = `Tournament Starting!`;
+        const subtitle = `Game 1 of ${this.roundsTotal} — Next Up: ${nextGame.title}`;
 
         this.runner.audioManager.setTrack('lobby');
 
@@ -54,10 +54,11 @@ export default class TournamentManager {
             newPoints: s.points
         }));
 
+        // Display single initial preview with a 5-second auto-advance timer
         this.ui.showTournamentStandings(displayData, this.players.getActivePlayers(), title, subtitle, () => {
             this.runner.audioManager.setTrack('game');
             this.launchGame(nextGame);
-        }, this.roundsTotal * 3);
+        }, this.roundsTotal * 3, 5);
     }
 
     launchGame(gameConfig) {
@@ -172,17 +173,30 @@ export default class TournamentManager {
         });
 
         this.currentRoundIdx++;
+        const isTournamentOver = this.currentRoundIdx >= this.roundsTotal;
 
-        const title = `Round ${this.currentRoundIdx} Results`;
-        let subtitle = (this.currentRoundIdx >= this.roundsTotal) ? "Final Standings!" : "Next Round Coming Up...";
+        if (isTournamentOver) {
+            // Tournament is over: display final standings with automatic transition to podium
+            const title = "Tournament Complete!";
+            const subtitle = "Final Standings";
+            this.runner.audioManager.setTrack('lobby');
 
-        this.ui.showTournamentStandings(displayData, this.players.getActivePlayers(), title, subtitle, () => {
-            if (this.currentRoundIdx >= this.roundsTotal) {
+            this.ui.showTournamentStandings(displayData, this.players.getActivePlayers(), title, subtitle, () => {
                 this.endTournament();
-            } else {
-                this.showNextRoundScreen();
-            }
-        }, this.roundsTotal * 3);
+            }, this.roundsTotal * 3, 5);
+        } else {
+            // Single between-round screen: displays results, previews next game, and auto-advances
+            const nextGame = this.gameQueue[this.currentRoundIdx];
+            const title = `Round ${this.currentRoundIdx} Complete`;
+            const subtitle = `Game ${this.currentRoundIdx + 1} of ${this.roundsTotal} — Next Up: ${nextGame.title}`;
+
+            this.runner.audioManager.setTrack('lobby');
+
+            this.ui.showTournamentStandings(displayData, this.players.getActivePlayers(), title, subtitle, () => {
+                this.runner.audioManager.setTrack('game');
+                this.launchGame(nextGame);
+            }, this.roundsTotal * 3, 5);
+        }
     }
 
     endTournament() {
