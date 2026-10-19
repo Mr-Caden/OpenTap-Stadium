@@ -8,16 +8,16 @@ export default class HopHero extends BaseGame {
         return {
             id: 'hop-hero',
             title: 'Hop Hero',
-            description: 'Cross the road, dodge the cars!',
-            tutorial: 'Tap to hop forward. Avoid getting squashed!',
+            description: 'Single run! Furthest distance across the road wins!',
+            tutorial: 'Tap to hop forward! One life: furthest distance wins!',
             controllerType: 'CONTROLLER',
             tournamentRules: {
-                winValue: 3,
+                winValue: 1,
                 livesPerRound: 1
             }
         };
     }
-
+    
     onSetup() {
         const count = this.players.length;
 

@@ -8,8 +8,8 @@ export default class AvatarMatch extends BaseGame {
         return {
             id: "avatar-match",
             title: "Avatar Match",
-            description: "Find the matching faces!",
-            tutorial: "Take turns flipping cards to find matching pairs!",
+            description: "Find the matching faces! No ties allowed!",
+            tutorial: "Take turns flipping cards to find matching pairs! Most pairs wins!",
             controllerType: "TOUCHPAD",
             tournamentRules: {
                 winValue: 1,
@@ -26,8 +26,8 @@ export default class AvatarMatch extends BaseGame {
         this.config.turnBasedBackgroundColor = true;
         this.config.controllerType = "TOUCHPAD";
 
-        this.CARD_SIZE = 150;
-        this.GAP = 20;
+        this.CARD_SIZE = 145;
+        this.GAP = 18;
         this.ANIM_SPEED = 0.15;
 
         this.cards = [];
@@ -160,25 +160,26 @@ export default class AvatarMatch extends BaseGame {
         let cols, rows;
 
         // Gap-free grid geometry tailored to exact player tiers
+        // For 2 players: 15 pairs (30 cards) in a 6x5 grid guarantees NO DRAW (impossible to tie an odd number)
         if (pCount <= 2) {
-            cols = 5;
-            rows = 4; // 20 cards = 10 pairs (5x4 full grid)
-            this.CARD_SIZE = 160;
-            this.GAP = 22;
-        } else if (pCount <= 4) {
             cols = 6;
-            rows = 5; // 30 cards = 15 pairs (6x5 full grid)
+            rows = 5; // 30 cards = 15 pairs (Mathematical no-tie guarantee)
             this.CARD_SIZE = 145;
             this.GAP = 18;
-        } else if (pCount <= 6) {
+        } else if (pCount <= 4) {
             cols = 6;
             rows = 6; // 36 cards = 18 pairs (6x6 full grid)
             this.CARD_SIZE = 135;
             this.GAP = 16;
+        } else if (pCount <= 6) {
+            cols = 7;
+            rows = 6; // 42 cards = 21 pairs (7x6 full grid)
+            this.CARD_SIZE = 128;
+            this.GAP = 15;
         } else {
             cols = 8;
             rows = 6; // 48 cards = 24 pairs (8x6 full grid)
-            this.CARD_SIZE = 125;
+            this.CARD_SIZE = 122;
             this.GAP = 14;
         }
 
@@ -260,7 +261,7 @@ export default class AvatarMatch extends BaseGame {
         const c2 = this.flippedCards[1];
         if (c1.data.id === c2.data.id) {
             this.canClick = false;
-            setTimeout(() => {
+            this.scheduleTimeout(() => {
                 const player = this.players[this.state.activePlayerIndex];
                 c1.isMatched = true;
                 c2.isMatched = true;
@@ -276,7 +277,7 @@ export default class AvatarMatch extends BaseGame {
             }, 400);
         } else {
             this.canClick = false;
-            setTimeout(() => {
+            this.scheduleTimeout(() => {
                 this.playSound("bump");
                 c1.flipState = "flipping_in";
                 c2.flipState = "flipping_in";

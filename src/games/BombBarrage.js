@@ -5,15 +5,15 @@ import BaseGame from "./BaseGame.js";
 export default class BombBarrage extends BaseGame {
     static get manifest() {
         return {
-            id: "bomb-barrage",
-            title: "Bomb Barrage",
-            description: "Dodge the creeping hugging bombs as more spawn!",
-            tutorial: "Hold to boost forward! Dodge the slow hugging bombs as they multiply!",
-            controllerType: "CONTROLLER",
+            id: 'bomb-barrage',
+            title: 'Bomb Barrage',
+            description: 'Sudden death! Dodge the creeping hugging bombs!',
+            tutorial: 'Hold to boost forward! Dodge the hugging bombs as they multiply! Last survivor wins!',
+            controllerType: 'CONTROLLER',
             tournamentRules: {
-                winValue: 3,
-                livesPerRound: 3,
-            },
+                winValue: 1,
+                livesPerRound: 1
+            }
         };
     }
 

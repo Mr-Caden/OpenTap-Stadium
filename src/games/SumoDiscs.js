@@ -8,11 +8,11 @@ export default class SumoDiscs extends BaseGame {
         return {
             id: 'sumo-discs',
             title: 'Sumo Discs',
-            description: 'Bump friends off the dojo!',
-            tutorial: 'Hold to boost forward! Knock rivals out of the ring!',
+            description: 'Bump friends off the dojo in sudden death!',
+            tutorial: 'Hold to boost forward! Last player in the ring wins!',
             controllerType: 'CONTROLLER',
             tournamentRules: {
-                winValue: 3,
+                winValue: 1,
                 livesPerRound: 1
             }
         };

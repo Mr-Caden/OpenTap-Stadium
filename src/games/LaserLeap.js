@@ -7,12 +7,12 @@ export default class LaserLeap extends BaseGame {
         return {
             id: "laser-leap",
             title: "Laser Leap",
-            description: "Jump over the rotating laser beam!",
-            tutorial: "Track the guide beam, then tap to JUMP when armed! Watch for reversals!",
+            description: "Jump over the accelerating laser beams as more deploy!",
+            tutorial: "Track the guide beam, then tap to JUMP when armed! Survive the escalating laser barrage!",
             controllerType: "CONTROLLER",
             tournamentRules: {
-                winValue: 3,
-                livesPerRound: 3,
+                winValue: 1,
+                livesPerRound: 1,
             },
         };
     }
@@ -20,14 +20,13 @@ export default class LaserLeap extends BaseGame {
     onSetup() {
         const count = this.players.length;
 
+        // Sudden Death: 1 round, 1 life, last survivor standing takes the match
         this.config.winCondition = "SURVIVAL";
         this.config.roundResetType = "RESET_ALL";
         this.config.roundEndCriteria = "SURVIVAL";
         this.config.eliminateOnDeath = true;
-
-        // Dynamic player scaling: 7+ players enter Sudden Death (1 life)
-        this.config.livesPerRound = count >= 7 ? 1 : (count >= 5 ? 2 : 3);
-        this.config.winValue = count >= 7 ? 2 : 3;
+        this.config.livesPerRound = 1;
+        this.config.winValue = 1;
 
         // Arena ring dimensions
         this.ARENA_RADIUS = 520;
@@ -35,17 +34,18 @@ export default class LaserLeap extends BaseGame {
         this.PYLON_RADIUS = 55;
         this.BEAM_LENGTH = this.ARENA_RADIUS + 20;
 
-        // Forgiving jump physics: ~25 fixed ticks (~416ms hang-time)
+        // Jump physics parameters
         this.JUMP_SPEED = 0.040;
         this.MAX_ALTITUDE = 86;
         this.CLEARANCE_ALTITUDE = 18;
 
-        // Beam rotation mechanics
+        // Laser rotation mechanics
         this.beamAngle = 0;
-        this.beamSpeed = 0.022;
-        this.baseSpeed = 0.022;
+        this.beamSpeed = 0.024;
+        this.baseSpeed = 0.024;
         this.direction = 1;
-        this.targetSpeed = 0.022;
+        this.targetSpeed = 0.024;
+        this.MAX_ROTATION_SPEED = 0.115; // Raised top speed cap for near-impossible overtime
 
         // Warm-up tracking phase before initial lethal activation
         this.WARMUP_DURATION = 180; // 3 seconds at 60Hz
@@ -57,11 +57,13 @@ export default class LaserLeap extends BaseGame {
         this.isReversing = false;
         this.reverseTimer = 0;
 
-        // Escalation: Dual laser mechanics for extended rounds
-        this.DUAL_BEAM_TRIGGER = 960; // Deploys after 16 seconds of armed survival
-        this.hasDualBeam = false;
-        this.isDualBeamDeploying = false;
-        this.dualBeamWarningTimer = 0;
+        // Multi-laser escalation stages
+        this.beamCount = 1;
+        this.targetBeamCount = 1;
+        this.deployWarningTimer = 0;
+        this.DUAL_BEAM_TICK = 660;   // 11 seconds: 2 lasers (180 deg)
+        this.TRI_BEAM_TICK = 1260;   // 21 seconds: 3 lasers (120 deg)
+        this.QUAD_BEAM_TICK = 1860;  // 31 seconds: 4 lasers (90 deg cross)
 
         this.playerStates = [];
     }
@@ -78,23 +80,22 @@ export default class LaserLeap extends BaseGame {
         this.beamAngle = (positions[0].angle + safeOffset) % (Math.PI * 2);
 
         this.direction = Math.random() < 0.5 ? 1 : -1;
-        this.baseSpeed = 0.022;
+        this.baseSpeed = 0.024;
         this.beamSpeed = this.baseSpeed * this.direction;
         this.targetSpeed = this.beamSpeed;
 
-        // Start in safe warm-up phase
+        // Reset warm-up and escalation state
         this.warmupTimer = this.WARMUP_DURATION;
         this.isBeamArmed = false;
 
         this.survivalTimer = 0;
-        this.nextReverseTick = 360 + Math.floor(Math.random() * 240);
+        this.nextReverseTick = 380 + Math.floor(Math.random() * 200);
         this.isReversing = false;
         this.reverseTimer = 0;
 
-        // Reset dual beam escalation
-        this.hasDualBeam = false;
-        this.isDualBeamDeploying = false;
-        this.dualBeamWarningTimer = 0;
+        this.beamCount = 1;
+        this.targetBeamCount = 1;
+        this.deployWarningTimer = 0;
 
         this.playerStates = this.players.map((basePlayer, idx) => ({
             id: basePlayer.id,
@@ -147,22 +148,26 @@ export default class LaserLeap extends BaseGame {
         } else {
             this.survivalTimer++;
 
-            // Gentle speed acceleration curve
-            this.baseSpeed = Math.min(0.062, 0.022 + (this.survivalTimer / 60) * 0.0012);
+            // Aggressive acceleration curve: speeds up continuously toward near-impossible speeds
+            this.baseSpeed = Math.min(
+                this.MAX_ROTATION_SPEED,
+                0.024 + (this.survivalTimer / 60) * 0.0024
+            );
 
-            // 2. Overtime Dual Beam Escalation
-            if (!this.hasDualBeam && !this.isDualBeamDeploying && this.survivalTimer >= this.DUAL_BEAM_TRIGGER) {
-                this.isDualBeamDeploying = true;
-                this.dualBeamWarningTimer = 120; // 2-second telegraph warning
-                this.playSound("pop");
-                this.ui.showTurnMessage("OVERTIME: DUAL LASERS!", "#FF5A36");
+            // 2. Escalating Multi-Beam Deployment Checks
+            if (this.beamCount === 1 && this.targetBeamCount === 1 && this.survivalTimer >= this.DUAL_BEAM_TICK) {
+                this.triggerBeamEscalation(2, "DUAL LASERS ACTIVATED!");
+            } else if (this.beamCount === 2 && this.targetBeamCount === 2 && this.survivalTimer >= this.TRI_BEAM_TICK) {
+                this.triggerBeamEscalation(3, "TRI-BEAM OVERDRIVE!");
+            } else if (this.beamCount === 3 && this.targetBeamCount === 3 && this.survivalTimer >= this.QUAD_BEAM_TICK) {
+                this.triggerBeamEscalation(4, "QUAD-BEAM MAYHEM!");
             }
 
-            if (this.isDualBeamDeploying) {
-                this.dualBeamWarningTimer--;
-                if (this.dualBeamWarningTimer <= 0) {
-                    this.isDualBeamDeploying = false;
-                    this.hasDualBeam = true;
+            // Handle beam escalation warning timer
+            if (this.deployWarningTimer > 0) {
+                this.deployWarningTimer--;
+                if (this.deployWarningTimer <= 0) {
+                    this.beamCount = this.targetBeamCount;
                     this.playSound("crash");
                     this.shake(6, 16);
                     this.spawnParticles(this.CX, this.CY, {
@@ -175,29 +180,29 @@ export default class LaserLeap extends BaseGame {
             }
 
             // 3. Direction Reversal Routine with Safe Disarm
-            if (this.survivalTimer >= this.nextReverseTick && !this.isReversing) {
+            if (this.survivalTimer >= this.nextReverseTick && !this.isReversing && this.deployWarningTimer <= 0) {
                 this.isReversing = true;
-                this.reverseTimer = 70; // Total safe reversal duration (~1.15 seconds)
+                this.reverseTimer = 65; // ~1.1s safe reversal window
                 this.playSound("pop");
             }
 
             if (this.isReversing) {
                 this.reverseTimer--;
 
-                // Phase 1 (ticks 70 -> 35): Decelerate to 0 and disarm into safe tracking mode
-                if (this.reverseTimer > 35) {
+                // Phase 1 (ticks 65 -> 32): Decelerate to 0 and disarm into safe tracking mode
+                if (this.reverseTimer > 32) {
                     this.targetSpeed = 0;
                 }
-                // Phase 2 (at tick 35): Flip direction
-                else if (this.reverseTimer === 35) {
+                // Phase 2 (at tick 32): Flip direction
+                else if (this.reverseTimer === 32) {
                     this.direction *= -1;
                     this.targetSpeed = this.baseSpeed * this.direction;
                     this.playSound("click");
                 }
-                // Phase 3 (ticks 35 -> 0): Accelerate in reverse, still disarmed/safe
+                // Phase 3 (ticks 32 -> 0): Accelerate in reverse, still disarmed/safe
                 else if (this.reverseTimer <= 0) {
                     this.isReversing = false;
-                    this.nextReverseTick = this.survivalTimer + 340 + Math.floor(Math.random() * 260);
+                    this.nextReverseTick = this.survivalTimer + 300 + Math.floor(Math.random() * 220);
                     this.playSound("jump");
                     this.shake(3, 8);
                     this.spawnParticles(this.CX, this.CY, {
@@ -216,7 +221,9 @@ export default class LaserLeap extends BaseGame {
         this.beamSpeed = this.p.lerp(this.beamSpeed, this.targetSpeed, 0.08);
         this.beamAngle = (this.beamAngle + this.beamSpeed + Math.PI * 2) % (Math.PI * 2);
 
-        // 4. Update player jump physics and evaluate collision
+        // 4. Update player jump physics and evaluate collisions against all active beams
+        const activeBeamAngles = this.getActiveBeamAngles();
+
         this.playerStates.forEach((ps) => {
             if (ps.player.isEliminated) return;
 
@@ -235,25 +242,44 @@ export default class LaserLeap extends BaseGame {
                 }
             }
 
-            // Collisions strictly occur when armed and NOT during direction reversals
+            // Damage is evaluated only when the laser is armed and not during direction switches
             const canDamage = this.isBeamArmed && !this.isReversing && ps.hitCooldown <= 0;
 
             if (canDamage) {
-                // Test primary laser beam
-                const hitPrimary = this.testBeamCollision(this.beamAngle, ps.angle, ps.altitude);
-
-                // Test secondary laser beam if overtime dual beam is active
-                const hitSecondary = this.hasDualBeam && this.testBeamCollision(
-                    (this.beamAngle + Math.PI) % (Math.PI * 2),
-                    ps.angle,
-                    ps.altitude
-                );
-
-                if (hitPrimary || hitSecondary) {
-                    this.zapPlayer(ps);
+                for (let i = 0; i < activeBeamAngles.length; i++) {
+                    if (this.testBeamCollision(activeBeamAngles[i], ps.angle, ps.altitude)) {
+                        this.zapPlayer(ps);
+                        break;
+                    }
                 }
             }
         });
+    }
+
+    triggerBeamEscalation(nextCount, announcement) {
+        this.targetBeamCount = nextCount;
+        this.deployWarningTimer = 90; // 1.5s telegraph warning before new beams arm
+        this.playSound("pop");
+        this.ui.showTurnMessage(announcement, "#FF5A36");
+    }
+
+    getActiveBeamAngles() {
+        const angles = [];
+        const step = (Math.PI * 2) / this.beamCount;
+        for (let i = 0; i < this.beamCount; i++) {
+            angles.push((this.beamAngle + i * step) % (Math.PI * 2));
+        }
+        return angles;
+    }
+
+    getWarningBeamAngles() {
+        if (this.deployWarningTimer <= 0) return [];
+        const angles = [];
+        const step = (Math.PI * 2) / this.targetBeamCount;
+        for (let i = 0; i < this.targetBeamCount; i++) {
+            angles.push((this.beamAngle + i * step) % (Math.PI * 2));
+        }
+        return angles;
     }
 
     testBeamCollision(beamAngle, playerAngle, altitude) {
@@ -268,14 +294,14 @@ export default class LaserLeap extends BaseGame {
     }
 
     zapPlayer(ps) {
-        ps.hitCooldown = 90; // 1.5s invulnerability window
+        ps.hitCooldown = 90;
         this.playSound("crash");
         this.shake(8, 16);
 
         ps.expression = "stunned";
         this.spawnParticles(ps.baseX, ps.baseY, {
             color: "#FF5A36",
-            count: 14,
+            count: 16,
             size: 16,
             speed: 6,
         });
@@ -284,20 +310,18 @@ export default class LaserLeap extends BaseGame {
     }
 
     runDemoAI() {
-        // AI does not jump during safe warm-up or safe reversals
         if (!this.isBeamArmed || this.isReversing) return;
+
+        const activeBeams = this.getActiveBeamAngles();
 
         this.playerStates.forEach((ps) => {
             if (ps.player.isEliminated || ps.isJumping) return;
 
-            const shouldJumpPrimary = this.shouldJumpForBeam(this.beamAngle, ps.angle);
-            const shouldJumpSecondary = this.hasDualBeam && this.shouldJumpForBeam(
-                (this.beamAngle + Math.PI) % (Math.PI * 2),
-                ps.angle
-            );
-
-            if (shouldJumpPrimary || shouldJumpSecondary) {
-                this.simulateInput(ps.id, "PRESS");
+            for (let i = 0; i < activeBeams.length; i++) {
+                if (this.shouldJumpForBeam(activeBeams[i], ps.angle)) {
+                    this.simulateInput(ps.id, "PRESS");
+                    break;
+                }
             }
         });
     }
@@ -312,7 +336,7 @@ export default class LaserLeap extends BaseGame {
             (this.beamSpeed > 0 && angleDiff < 0) ||
             (this.beamSpeed < 0 && angleDiff > 0);
 
-        return isApproaching && Math.abs(angleDiff) > 0.14 && Math.abs(angleDiff) < 0.28;
+        return isApproaching && Math.abs(angleDiff) > 0.12 && Math.abs(angleDiff) < 0.28;
     }
 
     onDraw() {
@@ -357,17 +381,20 @@ export default class LaserLeap extends BaseGame {
     }
 
     drawLaserBeams() {
-        // Draw Primary Laser Beam
-        const isPrimaryLethal = this.isBeamArmed && !this.isReversing;
-        this.renderSingleBeam(this.beamAngle, isPrimaryLethal);
+        const isLethal = this.isBeamArmed && !this.isReversing;
+        const activeAngles = this.getActiveBeamAngles();
 
-        // Draw Secondary Laser Beam (Overtime Warning or Full Active)
-        if (this.hasDualBeam) {
-            const isSecondaryLethal = !this.isReversing;
-            this.renderSingleBeam((this.beamAngle + Math.PI) % (Math.PI * 2), isSecondaryLethal);
-        } else if (this.isDualBeamDeploying) {
-            // Flashing amber guide beam telegraphing incoming dual beam
-            this.renderSingleBeam((this.beamAngle + Math.PI) % (Math.PI * 2), false);
+        // 1. Draw all currently active beams
+        for (let i = 0; i < activeAngles.length; i++) {
+            this.renderSingleBeam(activeAngles[i], isLethal);
+        }
+
+        // 2. Draw upcoming beams in warning guide mode during deployment alerts
+        if (this.deployWarningTimer > 0) {
+            const warningAngles = this.getWarningBeamAngles();
+            for (let i = 0; i < warningAngles.length; i++) {
+                this.renderSingleBeam(warningAngles[i], false);
+            }
         }
     }
 
@@ -382,9 +409,9 @@ export default class LaserLeap extends BaseGame {
         p.push();
 
         if (!isLethal) {
-            // Non-lethal safe tracking guide (during warm-up, direction switches, or deploy warning)
+            // Non-lethal safe tracking guide (during warm-up, reversals, or deploy warning)
             p.stroke("#F59E0B");
-            p.strokeWeight(3);
+            p.strokeWeight(3.5);
             p.strokeCap(p.ROUND);
 
             const segments = 28;
@@ -442,21 +469,23 @@ export default class LaserLeap extends BaseGame {
             p.fill("#F59E0B");
             p.circle(0, 0, this.PYLON_RADIUS * 1.5);
 
-            // Rotating mechanical emitter
+            // Draw rotating mechanical nozzles for all active/target beams
+            const displayCount = Math.max(this.beamCount, this.targetBeamCount);
+            const step = p.TWO_PI / displayCount;
+
             p.rotate(this.beamAngle);
             p.fill("#211B18");
             p.rectMode(p.CENTER);
-            p.rect(this.PYLON_RADIUS * 0.4, 0, 36, 20, 5);
 
-            if (this.hasDualBeam || this.isDualBeamDeploying) {
-                p.rect(-this.PYLON_RADIUS * 0.4, 0, 36, 20, 5);
+            for (let i = 0; i < displayCount; i++) {
+                p.push();
+                p.rotate(i * step);
+                p.rect(this.PYLON_RADIUS * 0.4, 0, 36, 18, 5);
+                p.fill("#FFFFFF");
+                p.circle(this.PYLON_RADIUS * 0.6, 0, 10);
+                p.pop();
             }
 
-            p.fill("#FFFFFF");
-            p.circle(this.PYLON_RADIUS * 0.6, 0, 10);
-            if (this.hasDualBeam || this.isDualBeamDeploying) {
-                p.circle(-this.PYLON_RADIUS * 0.6, 0, 10);
-            }
             p.rotate(-this.beamAngle);
 
             if (!this.isBeamArmed) {
@@ -477,20 +506,20 @@ export default class LaserLeap extends BaseGame {
             p.fill("#FF5A36");
             p.circle(0, 0, this.PYLON_RADIUS * 1.5);
 
-            // Armed rotating mechanical core emitter
+            // Armed rotating mechanical nozzles matching active beam count
+            const step = p.TWO_PI / this.beamCount;
+
             p.rotate(this.beamAngle);
             p.fill("#211B18");
             p.rectMode(p.CENTER);
-            p.rect(this.PYLON_RADIUS * 0.4, 0, 36, 24, 6);
 
-            if (this.hasDualBeam) {
-                p.rect(-this.PYLON_RADIUS * 0.4, 0, 36, 24, 6);
-            }
-
-            p.fill("#FFFFFF");
-            p.circle(this.PYLON_RADIUS * 0.6, 0, 14);
-            if (this.hasDualBeam) {
-                p.circle(-this.PYLON_RADIUS * 0.6, 0, 14);
+            for (let i = 0; i < this.beamCount; i++) {
+                p.push();
+                p.rotate(i * step);
+                p.rect(this.PYLON_RADIUS * 0.4, 0, 36, 22, 6);
+                p.fill("#FFFFFF");
+                p.circle(this.PYLON_RADIUS * 0.6, 0, 14);
+                p.pop();
             }
         }
 

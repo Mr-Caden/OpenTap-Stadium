@@ -8,11 +8,11 @@ export default class BombTag extends BaseGame {
         return {
             id: 'bomb-tag',
             title: 'Bomb Tag',
-            description: 'Pass the bomb before it blows!',
-            tutorial: 'Hold to run forward! Pass the bomb to rivals before it blows!',
+            description: 'Hot potato! Pass the bomb before it blows!',
+            tutorial: 'Hold to run forward! Last survivor standing wins!',
             controllerType: 'CONTROLLER',
             tournamentRules: {
-                winValue: 3,
+                winValue: 1,
                 livesPerRound: 1
             }
         };

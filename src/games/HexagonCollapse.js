@@ -5,15 +5,15 @@ import BaseGame from "./BaseGame.js";
 export default class HexagonCollapse extends BaseGame {
     static get manifest() {
         return {
-            id: "hexagon-collapse",
-            title: "Hexagon Collapse",
-            description: "Tiles crumble when stepped on! Stay on solid ground!",
-            tutorial: "Hold to boost forward! Stay on solid ground as tiles crack and drop!",
-            controllerType: "CONTROLLER",
+            id: 'hexagon-collapse',
+            title: 'Hexagon Collapse',
+            description: 'Sudden death! Stay on solid ground as tiles crumble!',
+            tutorial: 'Hold to boost forward! Stay on solid ground as tiles crack and drop!',
+            controllerType: 'CONTROLLER',
             tournamentRules: {
-                winValue: 3,
-                livesPerRound: 1,
-            },
+                winValue: 1,
+                livesPerRound: 1
+            }
         };
     }
 

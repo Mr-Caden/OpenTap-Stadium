@@ -8,22 +8,22 @@ export default class OrbitSling extends BaseGame {
         return {
             id: 'orbit-sling',
             title: 'Orbit Sling',
-            description: 'Sling between gravity pylons to snatch stars!',
-            tutorial: 'Tap to release tether and fling! Snatch the golden stars!',
+            description: 'Sling between gravity pylons to snatch the most stars in 30 seconds!',
+            tutorial: 'Tap to release tether and fling! Snatch the most golden stars before time runs out!',
             controllerType: 'CONTROLLER',
             tournamentRules: {
-                winValue: 5,
+                winValue: 1,
                 livesPerRound: 1
             }
         };
     }
 
     onSetup() {
-        const playerCount = this.players.length;
+        const count = this.players.length;
 
-        // Dynamic player count scaling
-        this.config.winCondition = 'SCORE';
-        this.config.winValue = playerCount >= 7 ? 4 : 5;
+        // 30-Second Time Attack Format: Most stars collected at the buzzer wins
+        this.config.winCondition = 'TIME';
+        this.config.roundDuration = 30000;
         this.config.livesPerRound = 1;
         this.config.eliminateOnDeath = false;
         this.config.roundEndCriteria = 'NONE';
@@ -36,8 +36,8 @@ export default class OrbitSling extends BaseGame {
         this.MAX_ORBIT_RADIUS = 145;
         this.CAPTURE_RADIUS = 180;
 
-        // Scale star count with player count (2 to 5 stars)
-        this.MAX_STARS = Math.min(5, Math.max(2, Math.floor(playerCount * 0.5) + 1));
+        // Scale active stars on field with player count (2 to 5 stars)
+        this.MAX_STARS = Math.min(5, Math.max(2, Math.floor(count * 0.5) + 1));
 
         // Bounding arena geometry with bumper margins
         this.ARENA_PADDING = 85;
@@ -138,7 +138,6 @@ export default class OrbitSling extends BaseGame {
         if (!pylon) return;
 
         // Fling offset: Rewind launch angle slightly to compensate for human reaction delay
-        // This ensures the avatar flings where the player intended when deciding to press
         const reactionCompensation = entity.orbitSpeed * 3.4;
         const adjustedOrbitAngle = entity.orbitAngle - reactionCompensation;
 
@@ -207,10 +206,10 @@ export default class OrbitSling extends BaseGame {
         ent.y = pylon.y + Math.sin(ent.orbitAngle) * ent.orbitRadius;
         ent.anim = 'RUN';
 
-        // Avatar always faces forward in the direction of its orbital movement (no moonwalking)
+        // Avatar always faces forward in the direction of orbital movement
         const tangentVx = -Math.sin(ent.orbitAngle) * ent.orbitSpeed;
         ent.facing = tangentVx >= 0 ? 1 : -1;
-        ent.angle = 0; // Keep avatar naturally upright while running on orbit
+        ent.angle = 0;
 
         if (ent.pylonCooldown > 0) {
             ent.pylonCooldown--;
@@ -221,7 +220,6 @@ export default class OrbitSling extends BaseGame {
         ent.x += ent.vx;
         ent.y += ent.vy;
 
-        // Facing matches horizontal trajectory
         if (Math.abs(ent.vx) > 0.1) {
             ent.facing = ent.vx >= 0 ? 1 : -1;
         }
@@ -333,11 +331,6 @@ export default class OrbitSling extends BaseGame {
                 });
 
                 this.spawnStar();
-
-                if (ent.player.score >= this.config.winValue) {
-                    this.endRound(ent.player);
-                    return;
-                }
             }
         }
     }
@@ -425,6 +418,8 @@ export default class OrbitSling extends BaseGame {
         this.drawTethers();
         this.drawEntities();
         this.drawParticles();
+        // 30-second match countdown timer badge
+        this.drawTimerBadge(null, { criticalThreshold: 8 });
     }
 
     drawArenaBackdrop() {

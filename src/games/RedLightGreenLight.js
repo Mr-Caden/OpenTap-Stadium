@@ -8,11 +8,11 @@ export default class RedLightGreenLight extends BaseGame {
         return {
             id: 'red-light',
             title: 'Red Light, Green Light',
-            description: 'Run on Green. Freeze on Red!',
-            tutorial: 'Hold to Run. Release to Stop. Watch the light!',
+            description: 'Sudden death race! Moving on red eliminates you!',
+            tutorial: 'Hold to run, release to stop! Moving on red eliminates you!',
             controllerType: 'CONTROLLER',
             tournamentRules: {
-                winValue: 3,
+                winValue: 1,
                 livesPerRound: 1
             }
         };

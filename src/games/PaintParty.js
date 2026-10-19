@@ -8,8 +8,8 @@ export default class PaintParty extends BaseGame {
         return {
             id: 'paint-party',
             title: 'Paint Party',
-            description: 'Cover the floor with your color!',
-            tutorial: 'Tap to turn right. Paint the most tiles!',
+            description: 'Claim the most tiles before the 30-second buzzer!',
+            tutorial: 'Tap to turn right! Paint the most tiles before time runs out!',
             controllerType: 'CONTROLLER',
             tournamentRules: {
                 winValue: 1,

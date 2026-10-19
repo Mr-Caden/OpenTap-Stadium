@@ -7,8 +7,8 @@ export default class CodeBreaker extends BaseGame {
         return {
             id: "code-breaker",
             title: "Code Breaker",
-            description: "Crack the secret number code!",
-            tutorial: "Pick a number. Higher or Lower?",
+            description: "Crack the secret code! Keep guessing until someone breaks it!",
+            tutorial: "Pick tens then ones. Follow higher/lower clues until someone cracks the code!",
             controllerType: "CONTROLLER",
             tournamentRules: {
                 winValue: 1,
@@ -18,12 +18,9 @@ export default class CodeBreaker extends BaseGame {
     }
 
     onSetup() {
-        const count = this.players.length;
-
-        this.config.winCondition = 'SCORE';
-        // Scaled win threshold keeps multi-player deduction rounds punchy
-        this.config.winValue = count >= 7 ? 2 : (count >= 4 ? 3 : 5);
-        this.config.roundEndCriteria = 'NONE';
+        this.config.winCondition = "SCORE";
+        this.config.winValue = 1; // First player to crack the code wins immediately
+        this.config.roundEndCriteria = "NONE";
         this.config.livesPerRound = 1;
         this.config.eliminateOnDeath = false;
         this.config.showRoundResultUI = false;
@@ -31,19 +28,18 @@ export default class CodeBreaker extends BaseGame {
         this.secretNumber = 0;
         this.playerStates = [];
         this.activeJudges = [];
-        this.gameState = 'GUESSING';
-        this.wasPerfectWin = false;
+        this.gameState = "GUESSING";
         this.needNewSecret = true;
     }
 
     onRoundStart() {
         const now = this.p.millis();
 
+        // Generate one single secret code for the entire match
         if (this.needNewSecret) {
             this.secretNumber = Math.floor(this.p.random(0, 100));
             this.needNewSecret = false;
             this.activeJudges = [];
-            this.wasPerfectWin = false;
 
             this.playerStates = this.players.map((p, i) => ({
                 id: p.id,
@@ -60,15 +56,6 @@ export default class CodeBreaker extends BaseGame {
                 lastRoundGuess: null,
                 lastRoundFeedback: null,
             }));
-        } else {
-            this.playerStates.forEach((ps) => {
-                ps.phase = "tens";
-                ps.digit = 0;
-                ps.digitTimer = now;
-                ps.tens = 0;
-                ps.ones = 0;
-                ps.guess = null;
-            });
         }
 
         this.gameState = "GUESSING";
@@ -76,9 +63,7 @@ export default class CodeBreaker extends BaseGame {
 
     onPlayerInput(player, type) {
         if (type === "PRESS" && this.gameState === "GUESSING") {
-            const ps = this.playerStates.find(
-                (state) => state.id === player.id
-            );
+            const ps = this.playerStates.find((state) => state.id === player.id);
             if (ps) this.lockDigit(ps);
         }
     }
@@ -88,7 +73,7 @@ export default class CodeBreaker extends BaseGame {
             if (
                 ps.phase !== "locked" &&
                 ps.phase !== "done" &&
-                this.p.random() < 0.02
+                this.p.random() < 0.025
             ) {
                 this.lockDigit(ps);
             }
@@ -108,7 +93,7 @@ export default class CodeBreaker extends BaseGame {
 
     updateSpinners() {
         const p = this.p;
-        const interval = 600;
+        const interval = 550;
 
         this.playerStates.forEach((ps) => {
             if (ps.phase === "locked" || ps.phase === "done") return;
@@ -137,20 +122,17 @@ export default class CodeBreaker extends BaseGame {
     }
 
     checkAllLocked() {
-        const allLocked = this.playerStates.every(
-            (ps) => ps.phase === "locked"
-        );
+        const allLocked = this.playerStates.every((ps) => ps.phase === "locked");
         if (allLocked) {
             this.gameState = "REVEAL";
-            setTimeout(() => this.evaluateGuesses(), 1000);
+            this.scheduleTimeout(() => this.evaluateGuesses(), 700);
         }
     }
 
     evaluateGuesses() {
         this.activeJudges = [];
 
-        let exactMatch = false;
-        let winnerName = "";
+        let exactMatchWinner = null;
         let bestDiff = 100;
 
         this.playerStates.forEach((ps) => {
@@ -160,10 +142,12 @@ export default class CodeBreaker extends BaseGame {
 
             if (diff === 0) {
                 ps.lastRoundFeedback = "win";
-                exactMatch = true;
-                winnerName = ps.config.name;
-            } else if (diff < 0) ps.lastRoundFeedback = "low";
-            else ps.lastRoundFeedback = "high";
+                exactMatchWinner = ps;
+            } else if (diff < 0) {
+                ps.lastRoundFeedback = "low";
+            } else {
+                ps.lastRoundFeedback = "high";
+            }
 
             if (ps.diff < bestDiff) bestDiff = ps.diff;
             ps.phase = "done";
@@ -181,52 +165,52 @@ export default class CodeBreaker extends BaseGame {
                     x: this.CX,
                     targetX: startX + colW * ps.index + colW / 2,
                     anim: 0,
-                    label: exactMatch ? "WINNER!" : "CLOSEST!",
+                    label: exactMatchWinner ? "CRACKED!" : "CLOSEST!",
                 });
             }
         });
 
-        if (exactMatch) {
+        if (exactMatchWinner) {
+            // Someone cracked the exact secret code: game over, winner crowned!
             this.playSound("win");
-            this.wasPerfectWin = true;
-            this.needNewSecret = true;
-
-            this.playerStates.forEach((ps) => {
-                if (ps.diff === 0) {
-                    const pObj = this.players[ps.index];
-                    if (pObj) pObj.score++;
-                }
-            });
+            const winningPlayer = this.players[exactMatchWinner.index];
+            if (winningPlayer) winningPlayer.score++;
             this.updateUI();
 
-            setTimeout(() => {
+            this.scheduleTimeout(() => {
                 if (this.mode !== "demo") {
                     this.ui.showMessage(
-                        `Number Found: ${this.secretNumber}!`,
-                        `${winnerName} got it!`,
-                        "Next Round",
-                        () => {
-                            this.endRound();
-                        }
+                        `Code Cracked: ${this.secretNumber}!`,
+                        `${winningPlayer.name} cracked the secret code!`,
+                        "Continue",
+                        () => this.finishGame()
                     );
                 } else {
-                    this.endRound();
+                    this.finishGame();
                 }
             }, 1000);
         } else {
+            // No exact match: play feedback bump, unlock spinners, keep the same secret code, and guess again!
             this.playSound("bump");
-            this.wasPerfectWin = false;
-            this.needNewSecret = false;
 
-            setTimeout(() => {
-                this.startNewRound();
-            }, 2000);
+            this.scheduleTimeout(() => {
+                const now = this.p.millis();
+                this.playerStates.forEach((ps) => {
+                    ps.phase = "tens";
+                    ps.digit = 0;
+                    ps.digitTimer = now;
+                    ps.tens = 0;
+                    ps.ones = 0;
+                    ps.guess = null;
+                });
+                this.gameState = "GUESSING";
+            }, 1400);
         }
     }
 
     updateJudges() {
         this.activeJudges.forEach((j) => {
-            j.x = this.p.lerp(j.x, j.targetX, 0.05);
+            j.x = this.p.lerp(j.x, j.targetX, 0.06);
             j.anim += 0.1;
         });
     }
@@ -365,7 +349,7 @@ export default class CodeBreaker extends BaseGame {
             p.text(tVal, -50, spinY);
             p.text(oVal, 50, spinY);
 
-            p.textSize(24);
+            p.textSize(22);
             p.fill(100);
             let status = "";
             if (ps.phase === "tens") status = "PICK TENS";

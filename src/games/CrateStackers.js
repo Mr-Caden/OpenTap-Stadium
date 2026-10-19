@@ -8,12 +8,12 @@ export default class CrateStackers extends BaseGame {
         return {
             id: 'crate-stackers',
             title: 'Crate Stackers',
-            description: 'Build a tower of wobbly crates!',
-            tutorial: 'Time your drop to stack the crates high!',
+            description: 'Build one giant tower! The player who collapses it loses!',
+            tutorial: 'Time your drop to place crates! Whoever causes the collapse loses!',
             controllerType: 'CONTROLLER',
             tournamentRules: {
-                winValue: 3,
-                livesPerRound: 3
+                winValue: 1,
+                livesPerRound: 1
             }
         };
     }

@@ -7,6 +7,7 @@ import AvatarSystem from '../core/AvatarSystem.js';
  * Abstract base class providing fixed-timestep simulation, managed physics,
  * unified input normalization, entity lifecycle management, rotate-tap movement engine,
  * and shared vector rendering.
+ * Defaults to 1 round and 1 life platform-wide.
  */
 export default class BaseGame {
     constructor(context, rules = {}) {
@@ -27,11 +28,13 @@ export default class BaseGame {
         this.manifest = manifest;
 
         this.mode = rules.mode || 'active';
+        
+        // Fast, high-throughput default party rules: 1 round, 1 life, sudden death
         this.config = {
-            winCondition: 'SCORE', 
-            winValue: rules.winValue || 5,
+            winCondition: 'SURVIVAL', 
+            winValue: 1,
             roundDuration: 60000, 
-            roundEndCriteria: 'NONE', 
+            roundEndCriteria: 'SURVIVAL', 
             scoreSorting: 'DESC', 
             roundResetType: 'RESET_ALL', 
             livesPerRound: 1,
@@ -204,7 +207,7 @@ export default class BaseGame {
             rotSpeed: options.rotSpeed || 0.08,
             boostForce: options.boostForce || 0.055,
             friction: options.friction || 0.04,
-            reverseOnTap: options.reverseOnTap === true, // Default: false (constant one-direction rotation)
+            reverseOnTap: options.reverseOnTap === true,
             ...options
         };
     }
@@ -298,14 +301,14 @@ export default class BaseGame {
                 vx: 0,
                 vy: 0,
                 angle: 0,
-                rotDir: 1, // Constantly rotates clockwise
+                rotDir: 1,
                 rotSpeed: this.rotateTapConfig ? this.rotateTapConfig.rotSpeed : 0.08,
                 boostForce: this.rotateTapConfig ? this.rotateTapConfig.boostForce : 0.055,
                 isBoosting: false,
                 size: 90,
                 anim: 'IDLE',
                 expression: 'idle',
-                facing: 1, // Stays facing forward/upwards
+                facing: 1,
                 isPressing: false,
                 inputVector: { x: 0, y: 0 },
                 body: null,
@@ -546,7 +549,6 @@ export default class BaseGame {
         const activeEntities = this.getActiveEntities();
         for (let i = 0; i < activeEntities.length; i++) {
             const ent = activeEntities[i];
-            // Avatars default to staying upright and facing forward/upwards
             this.drawAvatar(ent.player, ent.x, ent.y, {
                 size: ent.size,
                 anim: ent.anim,
