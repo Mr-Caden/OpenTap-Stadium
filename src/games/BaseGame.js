@@ -1117,16 +1117,16 @@ export default class BaseGame {
         this.scheduleTimeout(() => {
             if (this.isDestroyed) return;
 
+            // Check if game is completely finished
             if (this.checkWinCondition()) {
                 this.finishGame();
             } else if (this.config.autoLoop) {
+                // If round continues, show upgraded avatar-based round winner screen without confetti shower
                 if (this.mode !== "demo" && this.config.showRoundResultUI) {
-                    // Upgraded, vibrant celebration screen with winning avatar, colors, and countdown
                     this.ui.showRoundWinner(
                         roundWinner,
-                        "Next Round Starting...",
-                        () => this.startNewRound(),
-                        4
+                        "Next round starting...",
+                        () => this.startNewRound()
                     );
                 } else {
                     this.scheduleTimeout(() => this.startNewRound(), 2000);
@@ -1143,13 +1143,21 @@ export default class BaseGame {
                 : b.score - a.score;
         });
         const leader = sorted[0];
+
+        // 1. Time-based matches conclude on timer expiry
+        if (this.config.winCondition === "TIME") return true;
+
+        // 2. Score threshold reached
         if (
             this.config.winCondition === "SCORE" &&
+            leader &&
             leader.score >= this.config.winValue
         ) {
             this.state.winner = leader;
             return true;
         }
+
+        // 3. Round quota reached (e.g. 1-round games where winValue = 1)
         if (
             this.config.winCondition === "ROUNDS" &&
             this.state.round >= this.config.winValue
@@ -1157,14 +1165,32 @@ export default class BaseGame {
             this.state.winner = leader;
             return true;
         }
+
+        // 4. Survival games
         if (this.config.winCondition === "SURVIVAL") {
-            const survivors = this.players.filter((p) => !p.isPermEliminated);
-            if (survivors.length <= 1) {
-                this.state.winner = survivors[0] || leader;
+            // In 1-round sudden death games or when quota reached: game is won immediately!
+            if (
+                this.config.winValue <= 1 ||
+                this.state.round >= this.config.winValue
+            ) {
+                this.state.winner = leader;
                 return true;
             }
+
+            if (this.config.roundResetType === "ELIMINATION") {
+                const survivors = this.players.filter((p) => !p.isEliminated);
+                if (survivors.length <= 1) {
+                    this.state.winner = survivors[0] || leader;
+                    return true;
+                }
+            } else {
+                if (leader && leader.score >= this.config.winValue) {
+                    this.state.winner = leader;
+                    return true;
+                }
+            }
         }
-        if (this.config.winCondition === "TIME") return true;
+
         return false;
     }
 
