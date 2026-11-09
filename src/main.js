@@ -351,13 +351,10 @@ function renderHub() {
     hubGrid.innerHTML = "";
     createTournamentBanner();
 
-    // 1. Render lightweight card DOM placeholders without allocating canvases upfront
     GAME_LIST.forEach((game) => createGameCard(game));
     audio.setTrack("lobby");
 
     network.broadcastState("LOBBY", "IDLE");
-
-    // 2. Virtualize hub cards: only mount and animate canvases when visible in viewport
     setupHubObserver();
 }
 
@@ -415,7 +412,6 @@ function setupHubObserver() {
     }
 
     if (!("IntersectionObserver" in window)) {
-        // Fallback for browsers without IntersectionObserver
         hubCards.forEach((c) => mountHubCard(c));
         return;
     }
@@ -424,10 +420,16 @@ function setupHubObserver() {
         (entries) => {
             entries.forEach((entry) => {
                 const gameId = entry.target.dataset.id;
-                const matched = hubCards.find((c) => c.gameConfig.id === gameId);
+                const matched = hubCards.find(
+                    (c) => c.gameConfig.id === gameId
+                );
                 if (!matched) return;
 
-                if (entry.isIntersecting && currentMode === "hub" && !isAttractMode) {
+                if (
+                    entry.isIntersecting &&
+                    currentMode === "hub" &&
+                    !isAttractMode
+                ) {
                     mountHubCard(matched);
                 } else {
                     unmountHubCard(matched);
@@ -436,7 +438,7 @@ function setupHubObserver() {
         },
         {
             root: hubGrid,
-            rootMargin: "120px 0px 120px 0px", // Preload slightly before scrolling into view
+            rootMargin: "120px 0px 120px 0px",
             threshold: 0.05,
         }
     );
@@ -455,7 +457,11 @@ function mountHubCard(cardItem) {
         return;
     }
 
-    const p5inst = runner.mount(cardItem.gameConfig.class, cardItem.canvasId, "demo");
+    const p5inst = runner.mount(
+        cardItem.gameConfig.class,
+        cardItem.canvasId,
+        "demo"
+    );
     if (p5inst) {
         mountedHubDemos.set(cardItem.canvasId, p5inst);
     }
@@ -1072,7 +1078,7 @@ function initPlazaP5() {
                     p.textSize(9);
                     p.text(
                         player.type === "mobile"
-                            ? "Phone Controller"
+                            ? "Phone (Click to Manage)"
                             : "Click to Customize",
                         0,
                         -18
@@ -1115,21 +1121,8 @@ function initPlazaP5() {
                 const w = wanderers.find((item) => item.id === hoveredId);
                 if (!pl || !w) return;
 
-                if (pl.type === "mobile") {
-                    audio.play("click");
-                    w.anim = "JUMP";
-                    w.actionStartTime = p.millis();
-                    w.expression = "happy";
-                    speechToasts.push({
-                        x: w.x,
-                        y: w.y - 65,
-                        text: "Edit on phone!",
-                        life: 1.0,
-                    });
-                } else {
-                    audio.play("click");
-                    openPlayerEditor(pl.id);
-                }
+                audio.play("click");
+                openPlayerEditor(pl.id);
             }
         };
 
@@ -1166,8 +1159,10 @@ function openPlayerEditor(playerId) {
 
     const delBtn = document.getElementById("editor-del-btn");
     if (delBtn) {
-        if (players.getActivePlayers().length > 2 && player.type === "local") {
+        if (players.getActivePlayers().length > 2) {
             delBtn.classList.remove("hidden");
+            delBtn.innerText =
+                player.type === "mobile" ? "Kick Player" : "Remove Player";
         } else {
             delBtn.classList.add("hidden");
         }
@@ -1302,8 +1297,15 @@ function setupEditorModalBindings() {
         if (editingPlayerId !== null) {
             audio.play("click");
             const idToRemove = editingPlayerId;
+            const pl = players.getPlayerById(idToRemove);
             closePlayerEditor();
-            players.removePlayerById(idToRemove);
+
+            if (pl && pl.type === "mobile") {
+                network.kickPlayer(idToRemove);
+            } else {
+                players.removePlayerById(idToRemove);
+            }
+
             renderVisualLobby();
         }
     };
