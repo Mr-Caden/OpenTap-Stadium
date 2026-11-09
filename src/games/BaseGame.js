@@ -1,6 +1,6 @@
 /* src/games/BaseGame.js */
 
-import AvatarSystem from "../core/AvatarSystem.js";
+import AvatarSystem from '../core/AvatarSystem.js';
 
 /**
  * BaseGame
@@ -23,34 +23,33 @@ export default class BaseGame {
         this.CY = this.V_HEIGHT / 2;
 
         this.allPlayers = context.players.getActivePlayers();
-
+        
         const manifest = this.constructor.manifest || {};
         this.manifest = manifest;
 
-        this.mode = rules.mode || "active";
-
+        this.mode = rules.mode || 'active';
+        
         // Fast, high-throughput default party rules: 1 round, 1 life, sudden death
         this.config = {
-            winCondition: "SURVIVAL",
+            winCondition: 'SURVIVAL', 
             winValue: 1,
-            roundDuration: 60000,
-            roundEndCriteria: "SURVIVAL",
-            scoreSorting: "DESC",
-            roundResetType: "RESET_ALL",
+            roundDuration: 60000, 
+            roundEndCriteria: 'SURVIVAL', 
+            scoreSorting: 'DESC', 
+            roundResetType: 'RESET_ALL', 
             livesPerRound: 1,
-            eliminateOnDeath: true,
+            eliminateOnDeath: true, 
             autoLoop: true,
             showRoundResultUI: true,
             turnBased: false,
             turnBasedBackgroundColor: false,
-            controllerType:
-                rules.controllerType || manifest.controllerType || "CONTROLLER",
-            autoStart: true,
-            ...rules,
+            controllerType: rules.controllerType || manifest.controllerType || 'CONTROLLER', 
+            autoStart: true, 
+            ...rules
         };
 
         // Responsive cursor speed: 15px/tick base speed allows swift arena navigation
-        this.CURSOR_SPEED = 15;
+        this.CURSOR_SPEED = 15; 
 
         // Centralized procedural avatar system
         this.avatars = new AvatarSystem(this.p);
@@ -78,9 +77,9 @@ export default class BaseGame {
         this.lastFrameTime = 0;
 
         // Core player records
-        this.players = this.allPlayers.map((p) => ({
-            ...p,
-            score: 0,
+        this.players = this.allPlayers.map(p => ({ 
+            ...p, 
+            score: 0, 
             lives: this.config.livesPerRound,
             isEliminated: false,
             isPermEliminated: false,
@@ -88,34 +87,34 @@ export default class BaseGame {
             cursorX: this.CX,
             cursorY: this.CY,
             isClicking: false,
-            clickSafetyTimer: 0,
+            clickSafetyTimer: 0, 
             inputVector: { x: 0, y: 0 },
-            sensitivity: p.sensitivity || 1.4,
+            sensitivity: p.sensitivity || 1.4
         }));
 
         // Standardized entity pool for gameplay entities (synced to active players)
         this.entities = [];
 
         this.state = {
-            phase: "SETUP",
+            phase: 'SETUP',
             round: 0,
             activePlayerIndex: 0,
             winner: null,
             isRoundActive: false,
-            timer: 0,
+            timer: 0 
         };
 
         this.scaleFactor = 1;
         this.transX = 0;
         this.transY = 0;
         this.shakeTimer = 0;
-
+        
         // Base canvas color matching OpenTap Stadium cream (#FAF6F0)
         this.bgColor = [250, 246, 240];
         this.targetBgColor = [250, 246, 240];
 
         this.isDestroyed = false;
-        this.isFirstBoot = true;
+        this.isFirstBoot = true; 
     }
 
     // --- MANAGED PHYSICS LIFECYCLE ---
@@ -127,12 +126,26 @@ export default class BaseGame {
      */
     enablePhysics(options = {}) {
         if (!window.Matter) {
-            console.error("[BaseGame] Matter.js is not loaded.");
+            console.error('[BaseGame] Matter.js is not loaded.');
             return;
         }
 
-        const { Engine, Events } = window.Matter;
+        const { Engine, Events, Composite } = window.Matter;
         this.physicsEnabled = true;
+
+        // Clean up previous engine instances and handlers to prevent duplicate physics worlds
+        if (this.engine) {
+            this.physicsEventHandlers.forEach(entry => {
+                Events.off(this.engine, entry.name, entry.handler);
+            });
+            this.physicsEventHandlers = [];
+            if (this.world) {
+                Composite.clear(this.world, false, true);
+            }
+            Engine.clear(this.engine);
+            this.engine = null;
+            this.world = null;
+        }
 
         const engineOpts = options.engineOptions || {};
         this.engine = Engine.create(engineOpts);
@@ -149,17 +162,15 @@ export default class BaseGame {
             this.engine.velocityIterations = options.velocityIterations;
         }
 
-        const collisionStartHandler = (e) =>
-            this._routeCollisions("collisionStart", e);
-        const collisionEndHandler = (e) =>
-            this._routeCollisions("collisionEnd", e);
+        const collisionStartHandler = (e) => this._routeCollisions('collisionStart', e);
+        const collisionEndHandler = (e) => this._routeCollisions('collisionEnd', e);
 
-        Events.on(this.engine, "collisionStart", collisionStartHandler);
-        Events.on(this.engine, "collisionEnd", collisionEndHandler);
+        Events.on(this.engine, 'collisionStart', collisionStartHandler);
+        Events.on(this.engine, 'collisionEnd', collisionEndHandler);
 
         this.physicsEventHandlers.push(
-            { name: "collisionStart", handler: collisionStartHandler },
-            { name: "collisionEnd", handler: collisionEndHandler }
+            { name: 'collisionStart', handler: collisionStartHandler },
+            { name: 'collisionEnd', handler: collisionEndHandler }
         );
     }
 
@@ -171,28 +182,16 @@ export default class BaseGame {
             const entityA = this.getEntityByBody(pair.bodyA);
             const entityB = this.getEntityByBody(pair.bodyB);
 
-            if (type === "collisionStart") {
-                this.onCollisionStart(
-                    pair,
-                    pair.bodyA,
-                    pair.bodyB,
-                    entityA,
-                    entityB
-                );
-            } else if (type === "collisionEnd") {
-                this.onCollisionEnd(
-                    pair,
-                    pair.bodyA,
-                    pair.bodyB,
-                    entityA,
-                    entityB
-                );
+            if (type === 'collisionStart') {
+                this.onCollisionStart(pair, pair.bodyA, pair.bodyB, entityA, entityB);
+            } else if (type === 'collisionEnd') {
+                this.onCollisionEnd(pair, pair.bodyA, pair.bodyB, entityA, entityB);
             }
         }
     }
 
     addPhysicsBody(body) {
-        if (this.world && window.Matter) {
+        if (this.world && window.Matter && body) {
             window.Matter.Composite.add(this.world, body);
         }
         return body;
@@ -206,7 +205,7 @@ export default class BaseGame {
 
     getEntityByBody(body) {
         if (!body) return null;
-        return this.entities.find((e) => e.body === body) || null;
+        return this.entities.find(e => e.body === body) || null;
     }
 
     // --- ENGINE-LEVEL ROTATE-TAP MOVEMENT SYSTEM ---
@@ -223,7 +222,7 @@ export default class BaseGame {
             boostForce: options.boostForce || 0.055,
             friction: options.friction || 0.04,
             reverseOnTap: options.reverseOnTap === true,
-            ...options,
+            ...options
         };
     }
 
@@ -234,26 +233,22 @@ export default class BaseGame {
             const ent = activeEntities[i];
 
             if (ent.isBoosting) {
-                const forceMag =
-                    ent.boostForce || this.rotateTapConfig.boostForce;
+                const forceMag = ent.boostForce || this.rotateTapConfig.boostForce;
                 const fx = Math.cos(ent.angle) * forceMag;
                 const fy = Math.sin(ent.angle) * forceMag;
 
                 if (ent.body && window.Matter) {
-                    window.Matter.Body.applyForce(ent.body, ent.body.position, {
-                        x: fx,
-                        y: fy,
-                    });
+                    window.Matter.Body.applyForce(ent.body, ent.body.position, { x: fx, y: fy });
                 } else {
                     ent.vx = (ent.vx || 0) + fx * 15;
                     ent.vy = (ent.vy || 0) + fy * 15;
                 }
 
-                ent.anim = "RUN";
+                ent.anim = 'RUN';
             } else {
                 const speed = ent.rotSpeed || this.rotateTapConfig.rotSpeed;
                 ent.angle += speed * (ent.rotDir || 1);
-                if (ent.anim === "RUN") ent.anim = "IDLE";
+                if (ent.anim === 'RUN') ent.anim = 'IDLE';
             }
 
             // Kinematic integration for entities without rigid bodies
@@ -272,12 +267,12 @@ export default class BaseGame {
         for (let i = 0; i < activeEntities.length; i++) {
             const ent = activeEntities[i];
             this.drawDirectionArrow(ent.x, ent.y, ent.angle, {
-                distance: options.distance || ent.size / 2 + 28,
+                distance: options.distance || (ent.size / 2 + 28),
                 size: options.size || 10,
                 color: ent.player.color,
-                strokeColor: "#FFFFFF",
+                strokeColor: '#FFFFFF',
                 strokeWeight: 2,
-                ...options,
+                ...options
             });
         }
     }
@@ -297,7 +292,7 @@ export default class BaseGame {
     }
 
     clearAllTimeouts() {
-        this.activeTimeouts.forEach((id) => clearTimeout(id));
+        this.activeTimeouts.forEach(id => clearTimeout(id));
         this.activeTimeouts.clear();
     }
 
@@ -305,10 +300,22 @@ export default class BaseGame {
 
     /**
      * Rebuilds the entity roster for all active players at the start of a round.
+     * Guaranteed to detach and destroy any orphaned rigid bodies from previous rounds.
      */
     initEntities() {
+        // Remove all previous entity physics bodies from the world to prevent ghost colliders
+        if (this.entities && this.entities.length > 0) {
+            for (let i = 0; i < this.entities.length; i++) {
+                const ent = this.entities[i];
+                if (ent && ent.body) {
+                    this.removePhysicsBody(ent.body);
+                    ent.body = null;
+                }
+            }
+        }
         this.entities = [];
-        const activePlayers = this.players.filter((p) => !p.isPermEliminated);
+
+        const activePlayers = this.players.filter(p => !p.isPermEliminated);
 
         activePlayers.forEach((player, index) => {
             const entity = {
@@ -321,21 +328,17 @@ export default class BaseGame {
                 vy: 0,
                 angle: 0,
                 rotDir: 1,
-                rotSpeed: this.rotateTapConfig
-                    ? this.rotateTapConfig.rotSpeed
-                    : 0.08,
-                boostForce: this.rotateTapConfig
-                    ? this.rotateTapConfig.boostForce
-                    : 0.055,
+                rotSpeed: this.rotateTapConfig ? this.rotateTapConfig.rotSpeed : 0.08,
+                boostForce: this.rotateTapConfig ? this.rotateTapConfig.boostForce : 0.055,
                 isBoosting: false,
                 size: 90,
-                anim: "IDLE",
-                expression: "idle",
+                anim: 'IDLE',
+                expression: 'idle',
                 facing: 1,
                 isPressing: false,
                 inputVector: { x: 0, y: 0 },
                 body: null,
-                data: {},
+                data: {}
             };
 
             this.initPlayerEntity(entity, player);
@@ -344,14 +347,12 @@ export default class BaseGame {
     }
 
     getEntity(playerOrId) {
-        const id = typeof playerOrId === "object" ? playerOrId.id : playerOrId;
-        return this.entities.find((e) => e.id === id) || null;
+        const id = typeof playerOrId === 'object' ? playerOrId.id : playerOrId;
+        return this.entities.find(e => e.id === id) || null;
     }
 
     getActiveEntities() {
-        return this.entities.filter(
-            (e) => !e.player.isEliminated && !e.player.isPermEliminated
-        );
+        return this.entities.filter(e => !e.player.isEliminated && !e.player.isPermEliminated);
     }
 
     // --- SETUP & GAME LOOP ---
@@ -365,41 +366,55 @@ export default class BaseGame {
 
         this.state.round = 0;
         this.state.winner = null;
-        this.state.phase = "SETUP";
+        this.state.phase = 'SETUP';
         this.physicsAccumulator = 0;
         this.lastFrameTime = 0;
 
+        // Clean up entity bodies from previous matches (e.g., clicking Play Again)
+        if (this.entities && this.entities.length > 0) {
+            for (let i = 0; i < this.entities.length; i++) {
+                const ent = this.entities[i];
+                if (ent && ent.body) {
+                    this.removePhysicsBody(ent.body);
+                    ent.body = null;
+                }
+            }
+        }
+        this.entities = [];
+
+        // Clear all physics bodies from world so setup does not stack duplicate walls/colliders
+        if (this.world && window.Matter) {
+            window.Matter.Composite.clear(this.world, false, true);
+        }
+        
         // Execute minigame setup first so dynamic player scaling rules apply immediately
         this.onSetup();
 
         // Apply calibrated configuration to player structures
-        this.players.forEach((p) => {
+        this.players.forEach(p => {
             p.score = 0;
             p.isEliminated = false;
             p.isPermEliminated = false;
             p.lives = this.config.livesPerRound;
-            p.statusType = this.config.livesPerRound > 1 ? "hearts" : "score";
-            p.customStatus =
-                this.config.livesPerRound > 1 ? p.lives : undefined;
+            p.statusType = (this.config.livesPerRound > 1) ? 'hearts' : 'score';
+            p.customStatus = (this.config.livesPerRound > 1) ? p.lives : undefined;
             p.cursorX = this.CX;
             p.cursorY = this.CY;
             p.inputVector = { x: 0, y: 0 };
         });
 
-        if (this.audio && this.mode !== "demo") this.audio.setTrack("game");
+        if (this.audio && this.mode !== 'demo') this.audio.setTrack('game');
 
-        this.updateUI();
+        this.updateUI(); 
         this.startNewRound();
     }
 
     beginGameplay() {
-        if (this.state.phase === "TUTORIAL") {
-            this.state.phase = "PLAYING";
+        if (this.state.phase === 'TUTORIAL') {
+            this.state.phase = 'PLAYING';
             this.lastFrameTime = this.p.millis();
             this.physicsAccumulator = 0;
-            window.dispatchEvent(
-                new CustomEvent("game-state-change", { detail: "PLAYING" })
-            );
+            window.dispatchEvent(new CustomEvent('game-state-change', { detail: 'PLAYING' }));
         }
     }
 
@@ -419,10 +434,7 @@ export default class BaseGame {
             frameDelta = this.MAX_ACCUMULATED_TIME;
         }
 
-        if (
-            this.state.phase === "PLAYING" &&
-            this.config.winCondition === "TIME"
-        ) {
+        if (this.state.phase === 'PLAYING' && this.config.winCondition === 'TIME') {
             this.state.timer -= frameDelta;
             if (this.state.timer <= 0) {
                 this.state.timer = 0;
@@ -437,26 +449,20 @@ export default class BaseGame {
         }
 
         // Touchpad cursor handling factoring in player sensitivity
-        this.players.forEach((pl) => {
-            if (this.config.controllerType === "TOUCHPAD") {
+        this.players.forEach(pl => {
+            if (this.config.controllerType === 'TOUCHPAD') {
                 if (pl.inputVector.x !== 0 || pl.inputVector.y !== 0) {
                     const sens = pl.sensitivity || 1.4;
                     const moveSpeed = this.CURSOR_SPEED * sens;
                     pl.cursorX += pl.inputVector.x * moveSpeed;
                     pl.cursorY += pl.inputVector.y * moveSpeed;
-                    pl.cursorX = Math.max(
-                        0,
-                        Math.min(this.V_WIDTH, pl.cursorX)
-                    );
-                    pl.cursorY = Math.max(
-                        0,
-                        Math.min(this.V_HEIGHT, pl.cursorY)
-                    );
+                    pl.cursorX = Math.max(0, Math.min(this.V_WIDTH, pl.cursorX));
+                    pl.cursorY = Math.max(0, Math.min(this.V_HEIGHT, pl.cursorY));
                 }
             }
             if (pl.isClicking) {
                 pl.clickSafetyTimer += frameDelta;
-                if (pl.clickSafetyTimer > 2000) {
+                if (pl.clickSafetyTimer > 2000) { 
                     pl.isClicking = false;
                     pl.clickSafetyTimer = 0;
                 }
@@ -465,30 +471,17 @@ export default class BaseGame {
             }
         });
 
-        if (this.config.turnBasedBackgroundColor && this.mode !== "demo") {
-            this.bgColor[0] = p.lerp(
-                this.bgColor[0],
-                this.targetBgColor[0],
-                0.05
-            );
-            this.bgColor[1] = p.lerp(
-                this.bgColor[1],
-                this.targetBgColor[1],
-                0.05
-            );
-            this.bgColor[2] = p.lerp(
-                this.bgColor[2],
-                this.targetBgColor[2],
-                0.05
-            );
+        if (this.config.turnBasedBackgroundColor && this.mode !== 'demo') {
+            this.bgColor[0] = p.lerp(this.bgColor[0], this.targetBgColor[0], 0.05);
+            this.bgColor[1] = p.lerp(this.bgColor[1], this.targetBgColor[1], 0.05);
+            this.bgColor[2] = p.lerp(this.bgColor[2], this.targetBgColor[2], 0.05);
             p.background(this.bgColor);
         } else {
             p.background(this.getBgColor());
         }
 
         p.push();
-        let sx = 0,
-            sy = 0;
+        let sx = 0, sy = 0;
         if (this.shakeTimer > 0) {
             this.shakeTimer--;
             const damp = this.shakeTimer / 20;
@@ -499,8 +492,8 @@ export default class BaseGame {
         p.scale(this.scaleFactor);
 
         this.onDraw();
-
-        if (this.mode !== "demo" && this.config.controllerType === "TOUCHPAD") {
+        
+        if (this.mode !== 'demo' && this.config.controllerType === 'TOUCHPAD') {
             this.drawCursors();
         }
 
@@ -508,7 +501,7 @@ export default class BaseGame {
     }
 
     fixedUpdate(dt) {
-        if (this.isDestroyed || this.state.phase !== "PLAYING") return;
+        if (this.isDestroyed || this.state.phase !== 'PLAYING') return;
 
         // Process engine-level rotate-tap steering updates
         if (this.rotateTapEnabled) {
@@ -529,7 +522,7 @@ export default class BaseGame {
             }
         }
 
-        if (this.mode === "demo") {
+        if (this.mode === 'demo') {
             this.runDemoAI();
         }
 
@@ -538,30 +531,22 @@ export default class BaseGame {
 
     drawCursors() {
         const p = this.p;
-        this.players.forEach((pl) => {
-            if (pl.isEliminated || pl.type === "local") return;
+        this.players.forEach(pl => {
+            if (pl.isEliminated || pl.type === 'local') return;
 
             p.push();
             p.translate(pl.cursorX, pl.cursorY);
             p.fill(pl.color);
-            p.stroke(255);
-            p.strokeWeight(3);
-
+            p.stroke(255); p.strokeWeight(3);
+            
             p.beginShape();
-            p.vertex(0, 0);
-            p.vertex(0, 35);
-            p.vertex(10, 25);
-            p.vertex(20, 38);
-            p.vertex(26, 32);
-            p.vertex(16, 20);
-            p.vertex(28, 20);
+            p.vertex(0, 0); p.vertex(0, 35); p.vertex(10, 25);
+            p.vertex(20, 38); p.vertex(26, 32); p.vertex(16, 20); p.vertex(28, 20);
             p.endShape(p.CLOSE);
-
+            
             if (pl.isClicking) {
-                p.noFill();
-                p.stroke(pl.color);
-                p.strokeWeight(3);
-                p.circle(5, 5, 60);
+                p.noFill(); p.stroke(pl.color); p.strokeWeight(3);
+                p.circle(5, 5, 60); 
             }
             p.pop();
         });
@@ -573,7 +558,7 @@ export default class BaseGame {
         const p = this.p;
         const config = playerData.config || playerData.player || playerData;
         const size = options.size || 90;
-        const expression = options.expression || "idle";
+        const expression = options.expression || 'idle';
         const anim = options.anim || null;
         const facing = options.facing !== undefined ? options.facing : 1;
         const rotation = options.rotation || 0;
@@ -581,10 +566,7 @@ export default class BaseGame {
         if (options.shadow) {
             const shadowW = options.shadowWidth || size * 0.75;
             const shadowH = options.shadowHeight || size * 0.22;
-            const shadowOffset =
-                options.shadowOffsetY !== undefined
-                    ? options.shadowOffsetY
-                    : size * 0.45;
+            const shadowOffset = options.shadowOffsetY !== undefined ? options.shadowOffsetY : size * 0.45;
             this.drawShadow(x, y + shadowOffset, shadowW, shadowH);
         }
 
@@ -592,7 +574,7 @@ export default class BaseGame {
         p.translate(x, y);
         if (rotation) p.rotate(rotation);
         if (anim) this.avatars.applyTransform(anim);
-
+        
         this.avatars.draw({
             x: 0,
             y: 0,
@@ -601,7 +583,7 @@ export default class BaseGame {
             variant: config.variant,
             accessory: config.accessory,
             expression: expression,
-            facing: facing,
+            facing: facing
         });
         p.pop();
     }
@@ -617,7 +599,7 @@ export default class BaseGame {
                 facing: options.facing !== undefined ? options.facing : 1,
                 rotation: options.rotation !== undefined ? options.rotation : 0,
                 shadow: options.shadow !== false,
-                ...options,
+                ...options
             });
         }
     }
@@ -635,7 +617,7 @@ export default class BaseGame {
         const p = this.p;
         const distance = options.distance !== undefined ? options.distance : 60;
         const size = options.size || 14;
-        const color = options.color || "#FFFFFF";
+        const color = options.color || '#FFFFFF';
 
         p.push();
         p.translate(x, y);
@@ -654,23 +636,14 @@ export default class BaseGame {
 
     drawTimerBadge(value = null, options = {}) {
         const p = this.p;
-        const displayVal =
-            value !== null
-                ? value
-                : Math.max(0, Math.ceil(this.state.timer / 1000));
+        const displayVal = value !== null ? value : Math.max(0, Math.ceil(this.state.timer / 1000));
         const x = options.x !== undefined ? options.x : this.CX;
         const y = options.y !== undefined ? options.y : 70;
         const w = options.width || 140;
         const h = options.height || 75;
-        const threshold =
-            options.criticalThreshold !== undefined
-                ? options.criticalThreshold
-                : 10;
-        const isCritical =
-            typeof displayVal === "number" && displayVal <= threshold;
-        const textColor = isCritical
-            ? options.criticalColor || "#FF5A36"
-            : options.normalColor || "#211B18";
+        const threshold = options.criticalThreshold !== undefined ? options.criticalThreshold : 10;
+        const isCritical = typeof displayVal === 'number' && displayVal <= threshold;
+        const textColor = isCritical ? (options.criticalColor || '#FF5A36') : (options.normalColor || '#211B18');
 
         p.push();
         p.translate(x, y);
@@ -696,7 +669,7 @@ export default class BaseGame {
 
         if (options.subtext) {
             p.textSize(14);
-            p.fill(isCritical ? textColor : "#7A6F68");
+            p.fill(isCritical ? textColor : '#7A6F68');
             p.text(options.subtext, 0, 22);
         }
 
@@ -708,9 +681,9 @@ export default class BaseGame {
         const w = options.width || 120;
         const h = options.height || 50;
         const radius = options.radius || 10;
-        const bgColor = options.bgColor || "rgba(0, 0, 0, 0.7)";
-        const textColor = options.textColor || "#FFFFFF";
-        const pointerDir = options.pointerDir || "down";
+        const bgColor = options.bgColor || 'rgba(0, 0, 0, 0.7)';
+        const textColor = options.textColor || '#FFFFFF';
+        const pointerDir = options.pointerDir || 'down';
 
         p.push();
         p.translate(x, y);
@@ -720,9 +693,9 @@ export default class BaseGame {
         p.rectMode(p.CENTER);
         p.rect(0, 0, w, h, radius);
 
-        if (pointerDir === "down") {
+        if (pointerDir === 'down') {
             p.triangle(-10, h / 2, 10, h / 2, 0, h / 2 + 10);
-        } else if (pointerDir === "up") {
+        } else if (pointerDir === 'up') {
             p.triangle(-10, -h / 2, 10, -h / 2, 0, -h / 2 - 10);
         }
 
@@ -734,7 +707,7 @@ export default class BaseGame {
 
         if (options.subtext) {
             p.textSize(14);
-            p.fill(options.subtextColor || "#F59E0B");
+            p.fill(options.subtextColor || '#F59E0B');
             p.text(options.subtext, 0, 16);
         }
 
@@ -758,8 +731,7 @@ export default class BaseGame {
     getRadialPositions(count, radius, options = {}) {
         const cx = options.centerX !== undefined ? options.centerX : this.CX;
         const cy = options.centerY !== undefined ? options.centerY : this.CY;
-        const startAngle =
-            options.startAngle !== undefined ? options.startAngle : 0;
+        const startAngle = options.startAngle !== undefined ? options.startAngle : 0;
         const positions = [];
 
         for (let i = 0; i < count; i++) {
@@ -767,36 +739,26 @@ export default class BaseGame {
             positions.push({
                 x: cx + Math.cos(angle) * radius,
                 y: cy + Math.sin(angle) * radius,
-                angle: angle,
+                angle: angle
             });
         }
         return positions;
     }
 
     getLinearPositions(count, spacing, options = {}) {
-        const axis = options.axis || "x";
+        const axis = options.axis || 'x';
         const totalSpan = (count - 1) * spacing;
         const positions = [];
 
-        if (axis === "x") {
-            const startX =
-                (options.centerCoord !== undefined
-                    ? options.centerCoord
-                    : this.CX) -
-                totalSpan / 2;
-            const y =
-                options.fixedCoord !== undefined ? options.fixedCoord : this.CY;
+        if (axis === 'x') {
+            const startX = (options.centerCoord !== undefined ? options.centerCoord : this.CX) - totalSpan / 2;
+            const y = options.fixedCoord !== undefined ? options.fixedCoord : this.CY;
             for (let i = 0; i < count; i++) {
                 positions.push({ x: startX + i * spacing, y });
             }
         } else {
-            const startY =
-                (options.centerCoord !== undefined
-                    ? options.centerCoord
-                    : this.CY) -
-                totalSpan / 2;
-            const x =
-                options.fixedCoord !== undefined ? options.fixedCoord : this.CX;
+            const startY = (options.centerCoord !== undefined ? options.centerCoord : this.CY) - totalSpan / 2;
+            const x = options.fixedCoord !== undefined ? options.fixedCoord : this.CX;
             for (let i = 0; i < count; i++) {
                 positions.push({ x, y: startY + i * spacing });
             }
@@ -808,7 +770,7 @@ export default class BaseGame {
 
     spawnParticles(x, y, options = {}) {
         const count = options.count || 10;
-        const color = options.color || "#FFFFFF";
+        const color = options.color || '#FFFFFF';
         const speed = options.speed || 5;
         const size = options.size || 15;
         const gravity = options.gravity !== undefined ? options.gravity : 0.2;
@@ -821,13 +783,10 @@ export default class BaseGame {
                 vx: (Math.random() - 0.5) * speed * 2,
                 vy: (Math.random() - 0.5) * speed * 2,
                 color,
-                size:
-                    typeof size === "function"
-                        ? size()
-                        : size * (0.8 + Math.random() * 0.4),
+                size: typeof size === 'function' ? size() : (size * (0.8 + Math.random() * 0.4)),
                 life: 1.0,
                 gravity,
-                lifeDecay,
+                lifeDecay
             });
         }
     }
@@ -866,11 +825,11 @@ export default class BaseGame {
     // --- UNIFIED INPUT PIPELINE ---
 
     handleInput(playerId, type, payload) {
-        if (this.isDestroyed || this.state.phase !== "PLAYING") return;
+        if (this.isDestroyed || this.state.phase !== 'PLAYING') return;
 
-        const p = this.players.find((pl) => pl.id === playerId);
+        const p = this.players.find(pl => pl.id === playerId);
         if (!p || p.isEliminated || p.isPermEliminated) return;
-
+        
         if (this.config.turnBased) {
             const activeP = this.players[this.state.activePlayerIndex];
             if (activeP && activeP.id !== playerId) return;
@@ -880,40 +839,39 @@ export default class BaseGame {
 
         // Core Rotate-Tap Input Integration
         if (this.rotateTapEnabled && entity) {
-            if (type === "PRESS") {
+            if (type === 'PRESS') {
                 if (this.rotateTapConfig.reverseOnTap) {
-                    entity.rotDir = entity.rotDir === 1 ? -1 : 1;
+                    entity.rotDir = (entity.rotDir === 1 ? -1 : 1);
                 }
                 entity.isBoosting = true;
-            } else if (type === "RELEASE") {
+            } else if (type === 'RELEASE') {
                 entity.isBoosting = false;
             }
         }
 
-        if (type === "VECTOR" && payload) {
-            p.inputVector = payload;
+        if (type === 'VECTOR' && payload) {
+            p.inputVector = payload; 
             if (entity) entity.inputVector = payload;
-        } else if (type === "PRESS") {
+        }
+        else if (type === 'PRESS') {
             p.isClicking = true;
             p.clickSafetyTimer = 0;
             if (entity) entity.isPressing = true;
-        } else if (type === "RELEASE") {
+        }
+        else if (type === 'RELEASE') {
             p.isClicking = false;
             if (entity) entity.isPressing = false;
         }
 
-        this.onPlayerInput(p, type, payload, entity);
+        this.onPlayerInput(p, type, payload, entity); 
     }
 
     simulateInput(playerIdentifier, action, payload = null) {
         let targetId = null;
-        if (typeof playerIdentifier === "number") {
+        if (typeof playerIdentifier === 'number') {
             const byIdx = this.players[playerIdentifier];
             targetId = byIdx ? byIdx.id : playerIdentifier;
-        } else if (
-            typeof playerIdentifier === "object" &&
-            playerIdentifier !== null
-        ) {
+        } else if (typeof playerIdentifier === 'object' && playerIdentifier !== null) {
             targetId = playerIdentifier.id;
         } else {
             targetId = playerIdentifier;
@@ -921,7 +879,7 @@ export default class BaseGame {
 
         this.handleInput(targetId, action, payload);
     }
-
+    
     runDemoAI() {}
 
     // --- ROUND PROGRESSION ---
@@ -930,73 +888,67 @@ export default class BaseGame {
         if (this.isDestroyed) return;
 
         this.clearAllTimeouts();
-        this.state.phase = "INTRO";
-
-        if (this.mode === "active" || this.mode === "tournament") {
+        this.state.phase = 'INTRO';
+        
+        if (this.mode === 'active' || this.mode === 'tournament') {
             this.state.round++;
         }
-
+        
         this.state.isRoundActive = true;
-        this.state.timer = this.config.roundDuration;
+        this.state.timer = this.config.roundDuration; 
         this.physicsAccumulator = 0;
         this.lastFrameTime = this.p.millis();
         this.clearParticles();
-
-        this.players.forEach((p) => {
-            if (
-                this.config.roundResetType === "ELIMINATION" &&
-                p.isPermEliminated
-            ) {
+        
+        this.players.forEach(p => {
+            if (this.config.roundResetType === 'ELIMINATION' && p.isPermEliminated) {
                 p.isEliminated = true;
                 return;
             }
             p.lives = this.config.livesPerRound;
             p.isEliminated = false;
-            p.statusType = this.config.livesPerRound > 1 ? "hearts" : "score";
-            p.customStatus =
-                this.config.livesPerRound > 1 ? p.lives : undefined;
+            p.statusType = (this.config.livesPerRound > 1) ? 'hearts' : 'score';
+            p.customStatus = (this.config.livesPerRound > 1) ? p.lives : undefined;
             p.isClicking = false;
             p.inputVector = { x: 0, y: 0 };
         });
 
-        // Initialize standardized player entity pool
+        // Initialize standardized player entity pool with previous body teardown
         this.initEntities();
 
         if (this.config.turnBased) {
-            this.validateTurn(true);
+            this.validateTurn(true); 
         }
 
-        if (this.config.roundResetType === "ELIMINATION") {
-            const survivors = this.players.filter((p) => !p.isPermEliminated);
+        if (this.config.roundResetType === 'ELIMINATION') {
+            const survivors = this.players.filter(p => !p.isPermEliminated);
             if (survivors.length <= 1) {
-                this.finishGame();
+                this.finishGame(); 
                 return;
             }
         }
-
+        
         this.updateUI();
         this.onRoundStart();
 
-        if (this.mode !== "demo") {
+        if (this.mode !== 'demo') {
             const shouldWait = !this.config.autoStart && this.isFirstBoot;
 
             if (shouldWait) {
-                this.state.phase = "TUTORIAL";
+                this.state.phase = 'TUTORIAL';
                 this.isFirstBoot = false;
             } else {
-                window.dispatchEvent(
-                    new CustomEvent("game-state-change", { detail: "PLAYING" })
-                );
+                window.dispatchEvent(new CustomEvent('game-state-change', { detail: 'PLAYING' }));
                 const delay = 800;
                 this.scheduleTimeout(() => {
-                    this.state.phase = "PLAYING";
+                    this.state.phase = 'PLAYING';
                     this.lastFrameTime = this.p.millis();
                     this.physicsAccumulator = 0;
                 }, delay);
             }
         } else {
             this.scheduleTimeout(() => {
-                this.state.phase = "PLAYING";
+                this.state.phase = 'PLAYING';
                 this.lastFrameTime = this.p.millis();
                 this.physicsAccumulator = 0;
             }, 100);
@@ -1008,26 +960,22 @@ export default class BaseGame {
         let attempts = 0;
         const total = this.players.length;
         do {
-            this.state.activePlayerIndex =
-                (this.state.activePlayerIndex + 1) % total;
+            this.state.activePlayerIndex = (this.state.activePlayerIndex + 1) % total;
             attempts++;
         } while (
-            (this.players[this.state.activePlayerIndex].isEliminated ||
-                this.players[this.state.activePlayerIndex].isPermEliminated) &&
+            (this.players[this.state.activePlayerIndex].isEliminated || 
+             this.players[this.state.activePlayerIndex].isPermEliminated) && 
             attempts < total
         );
         this.updateTurnVisuals();
     }
 
     validateTurn(randomize = false) {
-        const activePlayers = this.players.filter(
-            (p) => !p.isEliminated && !p.isPermEliminated
-        );
+        const activePlayers = this.players.filter(p => !p.isEliminated && !p.isPermEliminated);
         if (activePlayers.length === 0) return;
         const current = this.players[this.state.activePlayerIndex];
         if (randomize || current.isEliminated || current.isPermEliminated) {
-            const nextP =
-                activePlayers[Math.floor(Math.random() * activePlayers.length)];
+            const nextP = activePlayers[Math.floor(Math.random() * activePlayers.length)];
             this.state.activePlayerIndex = this.players.indexOf(nextP);
             this.updateTurnVisuals();
         }
@@ -1037,30 +985,31 @@ export default class BaseGame {
         if (this.isDestroyed) return;
         const current = this.players[this.state.activePlayerIndex];
         if (!current) return;
-        if (this.mode !== "demo")
-            this.ui.showTurnMessage(`${current.name}'s Turn!`, current.color);
-        if (this.config.turnBasedBackgroundColor)
-            this.targetBgColor = this.hexToRgb(current.color);
+        if (this.mode !== 'demo') this.ui.showTurnMessage(`${current.name}'s Turn!`, current.color);
+        if (this.config.turnBasedBackgroundColor) this.targetBgColor = this.hexToRgb(current.color);
     }
 
     eliminatePlayer(playerIdx) {
-        if (
-            !this.state.isRoundActive ||
-            this.state.phase !== "PLAYING" ||
-            this.isDestroyed
-        )
-            return;
+        if (!this.state.isRoundActive || this.state.phase !== 'PLAYING' || this.isDestroyed) return;
         const p = this.players[playerIdx];
         if (!p || p.isEliminated) return;
         p.lives--;
         if (this.config.livesPerRound > 1) {
-            p.customStatus = p.lives;
+            p.customStatus = p.lives; 
             this.updateUI();
         }
         if (p.lives <= 0) {
             if (this.config.eliminateOnDeath) {
                 p.isEliminated = true;
-                if (this.config.roundResetType === "ELIMINATION") {
+
+                // Immediately remove defeated player's physical collider to eliminate ghost body blocking
+                const ent = this.getEntity(p.id);
+                if (ent && ent.body) {
+                    this.removePhysicsBody(ent.body);
+                    ent.body = null;
+                }
+
+                if (this.config.roundResetType === 'ELIMINATION') {
                     p.isPermEliminated = true;
                     if (this.checkWinCondition()) {
                         this.scheduleTimeout(() => this.finishGame(), 1000);
@@ -1080,54 +1029,45 @@ export default class BaseGame {
 
     checkRoundEnd() {
         if (this.isDestroyed) return;
-        const active = this.players.filter((p) => !p.isEliminated);
-
-        if (this.config.roundEndCriteria === "SURVIVAL" && active.length <= 1) {
+        const active = this.players.filter(p => !p.isEliminated);
+        
+        if (this.config.roundEndCriteria === 'SURVIVAL' && active.length <= 1) {
             this.endRound(active.length === 1 ? active[0] : null);
-        } else if (
-            this.config.roundEndCriteria === "ALL_DEAD" &&
-            active.length === 0
-        ) {
+        } else if (this.config.roundEndCriteria === 'ALL_DEAD' && active.length === 0) {
             const sorted = [...this.players].sort((a, b) => b.score - a.score);
-            this.endRound(sorted[0]);
+            this.endRound(sorted[0]); 
         }
     }
 
     endRound(roundWinner) {
         if (!this.state.isRoundActive || this.isDestroyed) return;
         this.state.isRoundActive = false;
-        this.state.phase = "ROUND_OVER";
-
-        if (this.mode !== "demo") {
-            window.dispatchEvent(
-                new CustomEvent("game-state-change", { detail: "ROUND_OVER" })
-            );
+        this.state.phase = 'ROUND_OVER';
+        
+        if (this.mode !== 'demo') {
+            window.dispatchEvent(new CustomEvent('game-state-change', { detail: 'ROUND_OVER' }));
         }
-
-        if (roundWinner && this.mode !== "demo") {
-            if (this.config.roundEndCriteria === "SURVIVAL") {
+        
+        if (roundWinner && this.mode !== 'demo') {
+            if (this.config.roundEndCriteria === 'SURVIVAL') {
                 roundWinner.score++;
             }
-            this.playSound("win");
+            this.playSound('win');
         }
 
         this.updateUI();
-        this.onRoundEnd();
+        this.onRoundEnd(); 
 
         this.scheduleTimeout(() => {
             if (this.isDestroyed) return;
-
-            // Check if game is completely finished
+            
+            // Check if game or tournament round is concluded
             if (this.checkWinCondition()) {
                 this.finishGame();
             } else if (this.config.autoLoop) {
-                // If round continues, show upgraded avatar-based round winner screen without confetti shower
-                if (this.mode !== "demo" && this.config.showRoundResultUI) {
-                    this.ui.showRoundWinner(
-                        roundWinner,
-                        "Next round starting...",
-                        () => this.startNewRound()
-                    );
+                if (this.mode !== 'demo' && this.config.showRoundResultUI) {
+                    // Upgraded round winner overlay with animated avatar and no confetti shower
+                    this.ui.showRoundWinner(roundWinner, "Next round starting...", () => this.startNewRound());
                 } else {
                     this.scheduleTimeout(() => this.startNewRound(), 2000);
                 }
@@ -1136,49 +1076,37 @@ export default class BaseGame {
     }
 
     checkWinCondition() {
-        if (this.mode === "demo") return false;
+        if (this.mode === 'demo') return false; 
         const sorted = [...this.players].sort((a, b) => {
-            return this.config.scoreSorting === "ASC"
-                ? a.score - b.score
-                : b.score - a.score;
+            return this.config.scoreSorting === 'ASC' ? a.score - b.score : b.score - a.score;
         });
         const leader = sorted[0];
 
         // 1. Time-based matches conclude on timer expiry
-        if (this.config.winCondition === "TIME") return true;
+        if (this.config.winCondition === 'TIME') return true;
 
         // 2. Score threshold reached
-        if (
-            this.config.winCondition === "SCORE" &&
-            leader &&
-            leader.score >= this.config.winValue
-        ) {
+        if (this.config.winCondition === 'SCORE' && leader && leader.score >= this.config.winValue) {
             this.state.winner = leader;
             return true;
         }
 
         // 3. Round quota reached (e.g. 1-round games where winValue = 1)
-        if (
-            this.config.winCondition === "ROUNDS" &&
-            this.state.round >= this.config.winValue
-        ) {
+        if (this.config.winCondition === 'ROUNDS' && this.state.round >= this.config.winValue) {
             this.state.winner = leader;
             return true;
         }
 
         // 4. Survival games
-        if (this.config.winCondition === "SURVIVAL") {
-            // In 1-round sudden death games or when quota reached: game is won immediately!
-            if (
-                this.config.winValue <= 1 ||
-                this.state.round >= this.config.winValue
-            ) {
+        if (this.config.winCondition === 'SURVIVAL') {
+            // In 1-round sudden death games or when quota reached: game is won immediately
+            if (this.config.winValue <= 1 || this.state.round >= this.config.winValue) {
                 this.state.winner = leader;
                 return true;
             }
 
-            if (this.config.roundResetType === "ELIMINATION") {
-                const survivors = this.players.filter((p) => !p.isEliminated);
+            if (this.config.roundResetType === 'ELIMINATION') {
+                const survivors = this.players.filter(p => !p.isEliminated);
                 if (survivors.length <= 1) {
                     this.state.winner = survivors[0] || leader;
                     return true;
@@ -1196,19 +1124,17 @@ export default class BaseGame {
 
     finishGame() {
         if (this.isDestroyed) return;
-        this.state.phase = "GAME_OVER";
-
-        if (this.mode !== "demo") {
-            window.dispatchEvent(
-                new CustomEvent("game-state-change", { detail: "GAME_OVER" })
-            );
+        this.state.phase = 'GAME_OVER';
+        
+        if (this.mode !== 'demo') {
+            window.dispatchEvent(new CustomEvent('game-state-change', { detail: 'GAME_OVER' }));
         }
 
-        if (this.audio && this.mode !== "demo") this.audio.setTrack("victory");
-
-        if (this.mode === "tournament" && this.onGameComplete) {
-            this.onGameComplete(this.players);
-        } else if (this.mode === "active") {
+        if (this.audio && this.mode !== 'demo') this.audio.setTrack('victory');
+        
+        if (this.mode === 'tournament' && this.onGameComplete) {
+            this.onGameComplete(this.players); 
+        } else if (this.mode === 'active') {
             this.ui.showPodium(this.players, "Play Again", () => this.setup());
         } else {
             this.setup();
@@ -1223,12 +1149,8 @@ export default class BaseGame {
         // Safely cleans up both managed physics and legacy manual engine instances
         if (window.Matter && this.engine) {
             if (this.physicsEventHandlers.length > 0) {
-                this.physicsEventHandlers.forEach((entry) => {
-                    window.Matter.Events.off(
-                        this.engine,
-                        entry.name,
-                        entry.handler
-                    );
+                this.physicsEventHandlers.forEach(entry => {
+                    window.Matter.Events.off(this.engine, entry.name, entry.handler);
                 });
                 this.physicsEventHandlers = [];
             }
@@ -1246,21 +1168,17 @@ export default class BaseGame {
         const w = this.p.width;
         const h = this.p.height;
         this.scaleFactor = Math.min(w / this.V_WIDTH, h / this.V_HEIGHT);
-        this.transX = (w - this.V_WIDTH * this.scaleFactor) / 2;
-        this.transY = (h - this.V_HEIGHT * this.scaleFactor) / 2;
+        this.transX = (w - (this.V_WIDTH * this.scaleFactor)) / 2;
+        this.transY = (h - (this.V_HEIGHT * this.scaleFactor)) / 2;
     }
 
     hexToRgb(hex) {
-        const bigint = parseInt(hex.replace("#", ""), 16);
+        const bigint = parseInt(hex.replace('#', ''), 16);
         return [(bigint >> 16) & 255, (bigint >> 8) & 255, bigint & 255];
     }
 
-    shake(intensity, duration = 20) {
-        this.shakeTimer = duration;
-    }
-    playSound(name) {
-        if (this.audio && this.mode !== "demo") this.audio.play(name);
-    }
+    shake(intensity, duration = 20) { this.shakeTimer = duration; }
+    playSound(name) { if (this.audio && this.mode !== 'demo') this.audio.play(name); }
 
     // --- OVERRIDABLE LIFECYCLE HOOKS ---
 
@@ -1270,12 +1188,10 @@ export default class BaseGame {
     onFixedUpdate(dt) {}
     onRoundEnd() {}
     onPlayerEliminated(player) {}
-    onPlayerInput(player, type, payload, entity) {}
+    onPlayerInput(player, type, payload, entity) {} 
     onCollisionStart(pair, bodyA, bodyB, entityA, entityB) {}
     onCollisionEnd(pair, bodyA, bodyB, entityA, entityB) {}
     onDraw() {}
     onDestroy() {}
-    getBgColor() {
-        return "#FAF6F0";
-    }
+    getBgColor() { return '#FAF6F0'; }
 }
